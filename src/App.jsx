@@ -2,6 +2,13 @@ import React, { useState, useEffect, useMemo } from "react";
 import { supabase } from "./supabase.js";
 
 // ============================================================================
+// ADMINS — emails autorisés à saisir les vrais résultats des matchs
+// Pour ajouter un admin, ajoute son email à cette liste (en minuscules).
+// ============================================================================
+const ADMIN_EMAILS = ["selmarhanim@hotmail.com"];
+const isAdmin = (email) => email && ADMIN_EMAILS.includes(email.toLowerCase());
+
+// ============================================================================
 // DONNÉES — Phase de groupes, Coupe du Monde 2026 (calendrier officiel FIFA)
 // Tous les horaires sont en HEURE DE PARIS.
 // ============================================================================
@@ -226,8 +233,8 @@ function AuthScreen() {
   return (
     <Shell>
       <div style={s.loginWrap}>
-        <div style={s.ball}>⚽</div>
-        <h1 style={s.loginTitle}>Pronos<br /><span style={{ color: ACCENT }}>Mondial 26</span></h1>
+        <img src="/fifa-logo.png" alt="Coupe du Monde 2026" style={s.heroLogo} />
+        <h1 style={s.loginTitle}>TechInno<br />Pronos<br /><span style={{ color: ACCENT }}>Mondial 26</span></h1>
         <p style={s.loginSub}>
           {mode === "signup" ? "Crée ton compte pour participer" : "Connecte-toi pour jouer"}
         </p>
@@ -401,11 +408,23 @@ function Game({ session, profile }) {
   const totalPlayed = Object.values(results).filter((r) => r?.h != null && r?.a != null).length;
   const myScore = leaderboard.find((r) => r.uid === userId)?.pts || 0;
 
+  // Prochains matchs des 24h : ceux qui n'ont pas encore commencé et qui démarrent dans <24h.
+  // Si aucun match dans les 24h à venir, on prend les 3 prochains à jouer.
+  const upcomingMatches = useMemo(() => {
+    const now = Date.now();
+    const in24h = now + 24 * 60 * 60 * 1000;
+    const futureMatches = MATCHES
+      .filter((m) => m.kickoff && new Date(m.kickoff).getTime() > now)
+      .sort((a, b) => new Date(a.kickoff).getTime() - new Date(b.kickoff).getTime());
+    const next24h = futureMatches.filter((m) => new Date(m.kickoff).getTime() <= in24h);
+    return next24h.length > 0 ? next24h : futureMatches.slice(0, 3);
+  }, []);
+
   return (
     <Shell>
       <div style={s.header}>
         <div>
-          <div style={s.logo}>Pronos <span style={{ color: ACCENT }}>Mondial 26</span></div>
+          <div style={s.logo}>TechInno Pronos <span style={{ color: ACCENT }}>Mondial 26</span></div>
           <div style={s.hello}>Salut <b>{profile.pseudo}</b> 👋</div>
         </div>
         <div style={s.headerStats}>
@@ -414,8 +433,22 @@ function Game({ session, profile }) {
         </div>
       </div>
 
+      {/* ENCADRÉ PROCHAINS MATCHS (24h) — affiché en haut, toujours visible */}
+      <UpcomingBox
+        matches={upcomingMatches}
+        myPreds={myPreds}
+        setPred={setPred}
+        onSave={savePreds}
+        saved={saved}
+      />
+
       <div style={s.tabs}>
-        {[["matchs", "⚽ Matchs"], ["classement", "🏆 Classement"], ["regles", "📖 Règles"], ["admin", "🔧 Résultats"]].map(([k, label]) => (
+        {[
+          ["matchs", "⚽ Matchs"],
+          ["classement", "🏆 Classement"],
+          ["regles", "📖 Règles"],
+          ...(isAdmin(session.user.email) ? [["admin", "🔧 Résultats"]] : []),
+        ].map(([k, label]) => (
           <button key={k} onClick={() => setTab(k)} style={{ ...s.tab, ...(tab === k ? s.tabActive : {}) }}>
             {label}
           </button>
@@ -555,7 +588,7 @@ function Game({ session, profile }) {
         </div>
       )}
 
-      {tab === "admin" && (
+      {tab === "admin" && isAdmin(session.user.email) && (
         <div>
           {!adminOn ? (
             <div style={s.adminLock}>
@@ -598,6 +631,55 @@ function Game({ session, profile }) {
   );
 }
 
+// ============================================================================
+// UPCOMING BOX — encadré "Prochains matchs (24h)" en haut de l'app
+// ============================================================================
+function UpcomingBox({ matches, myPreds, setPred, onSave, saved }) {
+  if (matches.length === 0) {
+    return (
+      <div style={s.upcomingEmpty}>
+        ⚽ Aucun match à venir dans les 24h. La compétition est-elle terminée ?
+      </div>
+    );
+  }
+  const isWithin24h = matches.length > 0 && new Date(matches[0].kickoff).getTime() - Date.now() <= 24 * 60 * 60 * 1000;
+  return (
+    <div style={s.upcomingBox}>
+      <div style={s.upcomingHeader}>
+        <span>⚡ {isWithin24h ? "Prochains matchs (24h)" : "À venir"}</span>
+        <span style={s.upcomingCount}>{matches.length} match{matches.length > 1 ? "s" : ""}</span>
+      </div>
+      {matches.map((m) => {
+        const p = myPreds[m.id] || {};
+        const ko = formatKickoff(m.kickoff);
+        return (
+          <div key={m.id} style={s.upcomingRow}>
+            <div style={s.upcomingTop}>
+              <span style={s.upcomingDate}>{ko ? `${ko.long.slice(0, 3)}. ${ko.long.split(" ").slice(1).join(" ")} · ${ko.time}` : ""}</span>
+              <span style={s.upcomingGroup}>Groupe {m.group}</span>
+            </div>
+            <div style={s.upcomingMatch}>
+              <span style={s.upcomingTeam}><span style={s.flag}>{flag(m.home)}</span>{m.home}</span>
+              <div style={s.scoreInputs}>
+                <input type="number" min="0" max="20" value={p.h ?? ""}
+                  onChange={(e) => setPred(m.id, "h", e.target.value)} style={s.scoreInput} />
+                <span style={s.vs}>—</span>
+                <input type="number" min="0" max="20" value={p.a ?? ""}
+                  onChange={(e) => setPred(m.id, "a", e.target.value)} style={s.scoreInput} />
+              </div>
+              <span style={{ ...s.upcomingTeam, justifyContent: "flex-end" }}>{m.away}<span style={s.flag}>{flag(m.away)}</span></span>
+            </div>
+          </div>
+        );
+      })}
+      <div style={s.upcomingSaveBar}>
+        <button style={s.upcomingSaveBtn} onClick={onSave}>💾 Enregistrer ces pronos</button>
+        {saved && <span style={s.savedMsg}>✓ Enregistré !</span>}
+      </div>
+    </div>
+  );
+}
+
 function Shell({ children }) {
   return (
     <div style={s.bg}>
@@ -624,6 +706,7 @@ const s = {
   frame: { maxWidth: 540, margin: "0 auto", background: PAPER, borderRadius: 24, padding: 26, boxShadow: "0 24px 70px rgba(5,15,40,.45)", position: "relative", border: `1px solid ${LINE}` },
   loginWrap: { textAlign: "center", padding: "26px 8px" },
   ball: { fontSize: 56, filter: "drop-shadow(0 8px 14px rgba(30,91,214,.3))" },
+  heroLogo: { width: 110, height: "auto", margin: "0 auto 4px", display: "block", filter: "drop-shadow(0 8px 14px rgba(30,91,214,.3))" },
   loginTitle: { fontFamily: DISPLAY, fontWeight: 800, fontSize: 40, lineHeight: 1.02, letterSpacing: -1.2, margin: "14px 0 6px", color: INK },
   loginSub: { fontSize: 15.5, color: MUTE, marginBottom: 28, lineHeight: 1.5, fontWeight: 500 },
   bigInput: { width: "100%", boxSizing: "border-box", padding: "15px 18px", fontSize: 17, borderRadius: 14, border: `1.5px solid ${LINE}`, marginBottom: 12, fontFamily: BODY, fontWeight: 600, background: "#fff", color: INK, outline: "none" },
@@ -632,11 +715,24 @@ const s = {
   alertOk: { background: "#E7F6EE", color: "#1E7A47", padding: "12px 14px", borderRadius: 12, fontSize: 13, fontWeight: 600, marginTop: 14, textAlign: "left", lineHeight: 1.5 },
   alertErr: { background: "#FDECEC", color: "#B33", padding: "12px 14px", borderRadius: 12, fontSize: 13, fontWeight: 600, marginTop: 14, textAlign: "left", lineHeight: 1.5 },
   header: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, borderBottom: `1px solid ${LINE}`, paddingBottom: 18 },
-  logo: { fontFamily: DISPLAY, fontWeight: 800, fontSize: 19, letterSpacing: -0.6, color: INK },
+  logo: { fontFamily: DISPLAY, fontWeight: 800, fontSize: 16, letterSpacing: -0.4, color: INK, lineHeight: 1.2 },
   hello: { fontSize: 13.5, color: MUTE, marginTop: 3, fontWeight: 500 },
   headerStats: { display: "flex", flexDirection: "column", gap: 5, alignItems: "flex-end" },
   statPill: { background: `linear-gradient(180deg, ${INK} 0%, #16294a 100%)`, color: GOLD, padding: "7px 15px", borderRadius: 22, fontSize: 14, fontWeight: 800, fontFamily: DISPLAY },
   statPillGhost: { fontSize: 11.5, color: "#9AA4B6", fontWeight: 600 },
+  // Upcoming box
+  upcomingBox: { background: `linear-gradient(180deg, #FFFEF5 0%, #FFFAEB 100%)`, border: `1.5px solid ${GOLD}`, borderRadius: 18, padding: "14px 16px", marginBottom: 20, boxShadow: "0 4px 14px rgba(233,185,73,.18)" },
+  upcomingEmpty: { background: "#F1F4F9", border: `1px solid ${LINE}`, borderRadius: 14, padding: "16px", marginBottom: 20, fontSize: 13, color: MUTE, textAlign: "center", fontWeight: 500 },
+  upcomingHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", fontFamily: DISPLAY, fontWeight: 800, fontSize: 14, color: INK, marginBottom: 12, letterSpacing: -0.2 },
+  upcomingCount: { fontSize: 10.5, fontWeight: 700, color: "#9A7E2E", background: "rgba(233,185,73,.18)", padding: "3px 9px", borderRadius: 20, letterSpacing: 0.3, textTransform: "uppercase" },
+  upcomingRow: { background: "#fff", border: `1px solid #F1DFA8`, borderRadius: 12, padding: "10px 12px", marginBottom: 8 },
+  upcomingTop: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, fontSize: 11, fontWeight: 700 },
+  upcomingDate: { color: ACCENT },
+  upcomingGroup: { color: MUTE, fontSize: 10, textTransform: "uppercase", letterSpacing: 0.5 },
+  upcomingMatch: { display: "flex", alignItems: "center", gap: 8 },
+  upcomingTeam: { flex: 1, display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 700, color: INK },
+  upcomingSaveBar: { display: "flex", alignItems: "center", gap: 12, marginTop: 12 },
+  upcomingSaveBtn: { background: `linear-gradient(180deg, ${INK} 0%, #16294a 100%)`, color: GOLD, border: "none", padding: "10px 16px", fontSize: 13, fontWeight: 700, borderRadius: 11, cursor: "pointer", fontFamily: BODY, flex: 1, boxShadow: "0 4px 12px rgba(11,26,51,.22)" },
   tabs: { display: "flex", gap: 6, marginBottom: 20, background: "#EEF2F8", padding: 5, borderRadius: 14 },
   tab: { flex: 1, padding: "10px 4px", border: "none", background: "transparent", borderRadius: 10, fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: BODY, color: MUTE },
   tabActive: { background: "#fff", color: INK, boxShadow: "0 2px 6px rgba(11,26,51,.1)" },
