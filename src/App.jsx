@@ -316,6 +316,7 @@ function Game({ session, profile }) {
   const [profiles, setProfiles] = useState({}); // {userId: pseudo}
   const [myPreds, setMyPreds] = useState({}); // {matchId: {h, a}}
   const [saved, setSaved] = useState(false);
+  const [viewingPlayer, setViewingPlayer] = useState(null); // uid du joueur dont on regarde les pronos, ou null
   const userId = session.user.id;
 
   useEffect(() => { loadData(); }, []);
@@ -394,9 +395,15 @@ function Game({ session, profile }) {
     const rows = Object.keys(byUser).map((uid) => {
       let pts = 0, exact = 0, good = 0, played = 0;
       MATCHES.forEach((m) => {
-        const sc = scorePrediction(byUser[uid][m.id], results[m.id]);
-        if (sc != null) {
-          played++; pts += sc;
+        const userPred = byUser[uid][m.id];
+        const matchRes = results[m.id];
+        // On compte UNIQUEMENT les matchs où le joueur a vraiment parié ET dont on a le résultat
+        const hasPred = userPred && userPred.h != null && userPred.a != null;
+        const hasResult = matchRes && matchRes.h != null && matchRes.a != null;
+        if (hasPred && hasResult) {
+          const sc = scorePrediction(userPred, matchRes);
+          played++;
+          pts += sc;
           if (sc === 10) exact++; else if (sc >= 3) good++;
         }
       });
@@ -529,13 +536,15 @@ function Game({ session, profile }) {
                 <div style={s.lbColPts}>Pts</div>
               </div>
               {leaderboard.map((row, i) => (
-                <div key={row.uid} style={{ ...s.lbRow, ...(row.uid === userId ? s.lbMe : {}) }}>
+                <div key={row.uid}
+                  onClick={() => setViewingPlayer(row.uid)}
+                  style={{ ...s.lbRow, ...(row.uid === userId ? s.lbMe : {}), cursor: "pointer" }}>
                   <div style={{ ...s.lbColRank, ...s.rank, ...(i === 0 ? s.rankGold : i === 1 ? s.rankSilver : i === 2 ? s.rankBronze : {}) }}>
                     {i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : i + 1}
                   </div>
                   <div style={s.lbColName}>
                     <div style={s.lbName}>{row.pseudo}{row.uid === userId && " (toi)"}</div>
-                    <div style={s.lbDetail}>{row.played} joués</div>
+                    <div style={s.lbDetail}>{row.played} joué{row.played > 1 ? "s" : ""} · voir détails ›</div>
                   </div>
                   <div style={s.lbColStat}><span style={s.lbStatVal}>{row.exact}</span></div>
                   <div style={s.lbColStat}><span style={s.lbStatVal}>{row.good}</span></div>
@@ -626,6 +635,17 @@ function Game({ session, profile }) {
         </div>
       )}
 
+      {viewingPlayer && (
+        <PlayerPronosModal
+          uid={viewingPlayer}
+          pseudo={profiles[viewingPlayer] || "?"}
+          isMe={viewingPlayer === userId}
+          allPredictions={allPredictions}
+          results={results}
+          onClose={() => setViewingPlayer(null)}
+        />
+      )}
+
       <button style={s.logout} onClick={() => supabase.auth.signOut()}>Se déconnecter</button>
     </Shell>
   );
@@ -675,6 +695,81 @@ function UpcomingBox({ matches, myPreds, setPred, onSave, saved }) {
       <div style={s.upcomingSaveBar}>
         <button style={s.upcomingSaveBtn} onClick={onSave}>💾 Enregistrer ces pronos</button>
         {saved && <span style={s.savedMsg}>✓ Enregistré !</span>}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// MODAL — voir les pronos d'un joueur sur les matchs TERMINÉS
+// ============================================================================
+function PlayerPronosModal({ uid, pseudo, isMe, allPredictions, results, onClose }) {
+  // récupère les pronos de ce joueur
+  const userPreds = {};
+  allPredictions.forEach((p) => {
+    if (p.user_id === uid) {
+      userPreds[p.match_id] = { h: p.home_score, a: p.away_score };
+    }
+  });
+
+  // Liste des matchs TERMINÉS où le joueur a parié, triés du plus récent au plus ancien
+  const rows = MATCHES
+    .filter((m) => {
+      const pred = userPreds[m.id];
+      const res = results[m.id];
+      const hasPred = pred && pred.h != null && pred.a != null;
+      const hasResult = res && res.h != null && res.a != null;
+      return hasPred && hasResult;
+    })
+    .map((m) => {
+      const pred = userPreds[m.id];
+      const res = results[m.id];
+      const pts = scorePrediction(pred, res);
+      return { match: m, pred, res, pts };
+    })
+    .sort((a, b) => new Date(b.match.kickoff).getTime() - new Date(a.match.kickoff).getTime());
+
+  const totalPts = rows.reduce((sum, r) => sum + r.pts, 0);
+
+  return (
+    <div style={s.modalOverlay} onClick={onClose}>
+      <div style={s.modalBox} onClick={(e) => e.stopPropagation()}>
+        <div style={s.modalHeader}>
+          <div>
+            <div style={s.modalTitle}>{pseudo}{isMe && " (toi)"}</div>
+            <div style={s.modalSubtitle}>{rows.length} prono{rows.length > 1 ? "s" : ""} sur matchs terminés · {totalPts} pts</div>
+          </div>
+          <button style={s.modalClose} onClick={onClose}>✕</button>
+        </div>
+
+        <div style={s.modalBody}>
+          {rows.length === 0 ? (
+            <p style={s.modalEmpty}>Aucun prono à afficher pour l'instant. Reviens après quelques matchs joués !</p>
+          ) : (
+            rows.map(({ match: m, pred, res, pts }) => {
+              const ko = formatKickoff(m.kickoff);
+              return (
+                <div key={m.id} style={s.pronoCard}>
+                  <div style={s.pronoTop}>
+                    <span style={s.pronoDate}>{ko ? `${ko.long.slice(0, 3)}. ${ko.long.split(" ").slice(1).join(" ")}` : ""}</span>
+                    <span style={s.pronoGroup}>Groupe {m.group}</span>
+                  </div>
+                  <div style={s.pronoRow}>
+                    <span style={s.pronoTeam}><span style={s.flag}>{flag(m.home)}</span>{m.home}</span>
+                    <span style={s.pronoScore}>{pred.h} — {pred.a}</span>
+                    <span style={{ ...s.pronoTeam, justifyContent: "flex-end" }}>{m.away}<span style={s.flag}>{flag(m.away)}</span></span>
+                  </div>
+                  <div style={s.pronoFooter}>
+                    <span style={s.pronoActual}>Résultat réel : <b>{res.h} — {res.a}</b></span>
+                    <span style={{ ...s.pronoPts, background: pts >= 10 ? GOLD : pts >= 5 ? "#8FD694" : pts > 0 ? "#cde" : "#eee" }}>
+                      +{pts} pt{pts > 1 ? "s" : ""}
+                    </span>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
       </div>
     </div>
   );
@@ -791,4 +886,23 @@ const s = {
   ruleDesc: { fontSize: 12.5, color: MUTE, lineHeight: 1.5, fontWeight: 500 },
   rulesNote: { fontSize: 12.5, color: "#3D4A5F", background: "#EDF3FD", borderRadius: 13, padding: "13px 15px", marginTop: 14, lineHeight: 1.55, fontWeight: 500 },
   logout: { display: "block", margin: "24px auto 0", background: "none", border: "none", color: "#9AA4B6", fontSize: 12.5, cursor: "pointer", fontWeight: 600, fontFamily: BODY, textDecoration: "underline" },
+  // Modal pronos d'un joueur
+  modalOverlay: { position: "fixed", inset: 0, background: "rgba(8,20,40,.65)", backdropFilter: "blur(4px)", zIndex: 1000, display: "flex", alignItems: "flex-end", justifyContent: "center", padding: "20px 12px" },
+  modalBox: { background: PAPER, borderRadius: 22, width: "100%", maxWidth: 540, maxHeight: "85vh", display: "flex", flexDirection: "column", boxShadow: "0 -10px 40px rgba(5,15,40,.5)", overflow: "hidden", border: `1px solid ${LINE}` },
+  modalHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "18px 22px", borderBottom: `1px solid ${LINE}`, background: "#fff" },
+  modalTitle: { fontFamily: DISPLAY, fontWeight: 800, fontSize: 19, color: INK, letterSpacing: -0.4 },
+  modalSubtitle: { fontSize: 12, color: MUTE, fontWeight: 500, marginTop: 3 },
+  modalClose: { background: "#F1F4F9", border: "none", borderRadius: 999, width: 34, height: 34, fontSize: 15, fontWeight: 700, color: MUTE, cursor: "pointer" },
+  modalBody: { overflow: "auto", padding: "18px 18px 22px", flex: 1 },
+  modalEmpty: { textAlign: "center", color: MUTE, fontSize: 14, padding: "40px 20px", fontWeight: 500, lineHeight: 1.5 },
+  pronoCard: { background: "#fff", border: `1px solid ${LINE}`, borderRadius: 14, padding: "11px 13px", marginBottom: 9, boxShadow: "0 1px 3px rgba(11,26,51,.04)" },
+  pronoTop: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 7, fontSize: 11, fontWeight: 700 },
+  pronoDate: { color: ACCENT },
+  pronoGroup: { color: MUTE, fontSize: 10, textTransform: "uppercase", letterSpacing: 0.5 },
+  pronoRow: { display: "flex", alignItems: "center", gap: 8 },
+  pronoTeam: { flex: 1, display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 700, color: INK },
+  pronoScore: { fontFamily: DISPLAY, fontSize: 18, fontWeight: 800, color: INK, minWidth: 64, textAlign: "center" },
+  pronoFooter: { display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 9, paddingTop: 8, borderTop: `1px solid ${LINE}` },
+  pronoActual: { fontSize: 11.5, color: MUTE, fontWeight: 600 },
+  pronoPts: { padding: "3px 10px", borderRadius: 18, fontWeight: 800, fontSize: 11.5, color: INK },
 };
