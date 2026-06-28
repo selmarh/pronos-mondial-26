@@ -283,29 +283,48 @@ function Game({ session, profile }) {
     setMyPreds(mine);
   }
 
+  // Set des IDs valides pour les pronos (uniquement les 16es de finale)
+  const R16_IDS = useMemo(() => new Set(MATCHES.map((m) => m.id)), []);
+
   function setPred(matchId, side, val) {
     const ko = KICKOFF_BY_ID[matchId];
     if (ko && Date.now() >= new Date(ko).getTime()) return;
     if (FIXED_RESULTS[matchId]) return;
     const clean = val === "" ? null : Math.max(0, Math.min(20, parseInt(val) || 0));
-    setMyPreds((m) => ({ ...m, [matchId]: { ...(m[matchId] || {}), [side]: clean } }));
+    setMyPreds((m) => {
+      const next = { ...m, [matchId]: { ...(m[matchId] || {}), [side]: clean } };
+      // Si c'est un nul complet (h et a renseignés et égaux) sans tabWinner → demander le winner
+      const pred = next[matchId];
+      if (pred.h != null && pred.a != null && pred.h === pred.a && !pred.tabWinner) {
+        setTabWinnerPrompt(matchId);
+      }
+      return next;
+    });
   }
 
-  async function savePreds() {
-    // Cherche un prono de nul sans winner TAB choisi (sur match non commencé)
-    const drawWithoutWinner = Object.entries(myPreds).find(([mid, v]) => {
-      if (v.h == null || v.a == null) return false;
-      if (v.h !== v.a) return false;
-      const ko = KICKOFF_BY_ID[mid];
-      if (ko && Date.now() >= new Date(ko).getTime()) return false;
-      return !v.tabWinner;
-    });
-    if (drawWithoutWinner) {
-      setTabWinnerPrompt(drawWithoutWinner[0]);
+  // Sauvegarde automatique : debounce 1s après la dernière modif (sauf au premier chargement)
+  const [initialLoadDone, setInitialLoadDone] = useState(false);
+  useEffect(() => {
+    if (!initialLoadDone) {
+      // Premier chargement : on attend que les données arrivent puis on active l'auto-save
+      if (Object.keys(myPreds).length > 0 || allPredictions.length > 0) {
+        setInitialLoadDone(true);
+      }
       return;
     }
+    if (Object.keys(myPreds).length === 0) return;
+    const timer = setTimeout(() => {
+      autoSavePreds();
+    }, 1000);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line
+  }, [myPreds]);
+
+  async function autoSavePreds() {
+    // On ne sauvegarde QUE les pronos sur des matchs valides (16es de finale)
+    // et qui ont au moins un score renseigné
     const rows = Object.entries(myPreds)
-      .filter(([_, v]) => v.h != null || v.a != null)
+      .filter(([mid, v]) => R16_IDS.has(mid) && (v.h != null || v.a != null))
       .map(([match_id, v]) => ({
         user_id: userId, match_id,
         home_score: v.h, away_score: v.a,
@@ -315,10 +334,14 @@ function Game({ session, profile }) {
     if (!error) {
       setSaved(true);
       setTimeout(() => setSaved(false), 1800);
-      loadData();
     } else {
-      alert("Erreur : " + error.message);
+      console.error("Erreur enregistrement :", error.message);
     }
+  }
+
+  // Bouton manuel : déclenche aussi la sauvegarde (utile si l'utilisateur n'attend pas)
+  async function savePreds() {
+    await autoSavePreds();
   }
 
   function setResult(matchId, side, val) {
@@ -496,8 +519,8 @@ function Game({ session, profile }) {
               </div>
             );
           })}
-          <div style={s.saveBar}>
-            <button style={s.cta} onClick={savePreds}>💾 Enregistrer mes pronos</button>
+          <div style={s.autoSaveBar}>
+            <span style={s.autoSaveInfo}>💾 Sauvegarde automatique active</span>
             {saved && <span style={s.savedMsg}>✓ Enregistré !</span>}
           </div>
         </>
@@ -676,7 +699,7 @@ function UpcomingBox({ matches, myPreds, setPred, onSave, saved }) {
         );
       })}
       <div style={s.upcomingSaveBar}>
-        <button style={s.upcomingSaveBtn} onClick={onSave}>💾 Enregistrer ces pronos</button>
+        <span style={s.autoSaveInfo}>💾 Sauvegarde automatique</span>
         {saved && <span style={s.savedMsg}>✓ Enregistré !</span>}
       </div>
     </div>
@@ -886,6 +909,8 @@ const s = {
   ptsBadge: { marginLeft: "auto", padding: "4px 11px", borderRadius: 20, fontWeight: 800, fontSize: 12.5, color: INK },
   drawHint: { marginTop: 10, padding: "8px 12px", background: "#FFF4E0", borderRadius: 10, fontSize: 12, color: "#8A5A1A", fontWeight: 600 },
   saveBar: { display: "flex", alignItems: "center", gap: 14, marginTop: 20 },
+  autoSaveBar: { display: "flex", alignItems: "center", justifyContent: "center", gap: 14, marginTop: 20, padding: "12px 14px", background: "#FAF5EE", borderRadius: 12, border: `1px solid ${LINE}` },
+  autoSaveInfo: { fontSize: 12.5, color: MUTE, fontWeight: 600 },
   savedMsg: { color: "#1E9E5A", fontWeight: 700, fontSize: 14 },
   lbHeader: { display: "flex", alignItems: "center", gap: 8, padding: "8px 14px", marginBottom: 6, fontSize: 10, fontWeight: 800, color: MUTE, textTransform: "uppercase", letterSpacing: 0.6 },
   lbColRank: { width: 26, textAlign: "left", flexShrink: 0 },
