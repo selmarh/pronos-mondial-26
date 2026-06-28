@@ -293,14 +293,31 @@ function Game({ session, profile }) {
     const clean = val === "" ? null : Math.max(0, Math.min(20, parseInt(val) || 0));
     setMyPreds((m) => {
       const next = { ...m, [matchId]: { ...(m[matchId] || {}), [side]: clean } };
-      // Si c'est un nul complet (h et a renseignés et égaux) sans tabWinner → demander le winner
-      const pred = next[matchId];
-      if (pred.h != null && pred.a != null && pred.h === pred.a && !pred.tabWinner) {
-        setTabWinnerPrompt(matchId);
-      }
       return next;
     });
   }
+
+  // Détection des matchs nuls avec délai de 1,5s (laisse le temps à l'utilisateur de finir de taper)
+  useEffect(() => {
+    // Cherche le 1er prono de nul sans tabWinner sur un match non commencé
+    const drawWithoutWinner = Object.entries(myPreds).find(([mid, v]) => {
+      if (v.h == null || v.a == null) return false;
+      if (v.h !== v.a) return false;
+      if (v.tabWinner) return false;
+      if (!R16_IDS.has(mid)) return false; // uniquement les matchs des 16es
+      const ko = KICKOFF_BY_ID[mid];
+      if (ko && Date.now() >= new Date(ko).getTime()) return false;
+      return true;
+    });
+    if (!drawWithoutWinner) return;
+
+    // Attend 1,5s avant d'ouvrir la modal (pour éviter le déclenchement intempestif pendant la frappe)
+    const timer = setTimeout(() => {
+      setTabWinnerPrompt(drawWithoutWinner[0]);
+    }, 1500);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line
+  }, [myPreds]);
 
   // Sauvegarde automatique : debounce 1s après la dernière modif (sauf au premier chargement)
   const [initialLoadDone, setInitialLoadDone] = useState(false);
@@ -334,9 +351,23 @@ function Game({ session, profile }) {
     if (!error) {
       setSaved(true);
       setTimeout(() => setSaved(false), 1800);
+      // Rafraîchit les données globales (allPredictions, classement) sans écraser myPreds
+      refreshGlobalData();
     } else {
       console.error("Erreur enregistrement :", error.message);
     }
+  }
+
+  // Rafraîchit allPredictions et results sans toucher à myPreds en cours d'édition
+  async function refreshGlobalData() {
+    const [preds, res] = await Promise.all([
+      supabase.from("predictions").select("*"),
+      supabase.from("results").select("*"),
+    ]);
+    setAllPredictions(preds.data || []);
+    const resMap = { ...FIXED_RESULTS };
+    (res.data || []).forEach((r) => { resMap[r.match_id] = { h: r.home_score, a: r.away_score }; });
+    setResults(resMap);
   }
 
   // Bouton manuel : déclenche aussi la sauvegarde (utile si l'utilisateur n'attend pas)
@@ -450,8 +481,7 @@ function Game({ session, profile }) {
       <div style={s.tabRulesInfo}>
         <span style={s.tabRulesIcon}>⚽</span>
         <div>
-          <b>Match nul ?</b> En élimination directe, chaque match doit avoir un vainqueur.
-          Si tu pronostiques un nul (ex : 1–1), l'app te demandera de choisir qui passe aux <b>tirs au but</b>.
+          <b>Match nul ?</b> Si tu pronostiques un nul (ex : 1–1), l'app te demandera de choisir qui passe aux <b>tirs au but</b>.
         </div>
       </div>
 
