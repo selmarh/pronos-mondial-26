@@ -2,121 +2,75 @@ import React, { useState, useEffect, useMemo } from "react";
 import { supabase } from "./supabase.js";
 
 // ============================================================================
-// ADMINS — emails autorisés à saisir les vrais résultats des matchs
-// Pour ajouter un admin, ajoute son email à cette liste (en minuscules).
+// ADMINS — emails autorisés à saisir les vrais résultats
 // ============================================================================
 const ADMIN_EMAILS = ["selmarhanim@hotmail.com"];
 const isAdmin = (email) => email && ADMIN_EMAILS.includes(email.toLowerCase());
 
 // ============================================================================
-// DONNÉES — Phase de groupes, Coupe du Monde 2026 (calendrier officiel FIFA)
-// Tous les horaires sont en HEURE DE PARIS.
+// BONUS — message d'excuse + +10 pts pour tout le monde
+// Affiché jusqu'à la date ci-dessous (modifiable)
 // ============================================================================
-const GROUPS = {
-  A: ["Mexique", "Afrique du Sud", "Corée du Sud", "Rép. tchèque"],
-  B: ["Canada", "Bosnie-Herzégovine", "Qatar", "Suisse"],
-  C: ["Brésil", "Maroc", "Haïti", "Écosse"],
-  D: ["États-Unis", "Paraguay", "Australie", "Turquie"],
-  E: ["Allemagne", "Curaçao", "Côte d'Ivoire", "Équateur"],
-  F: ["Pays-Bas", "Japon", "Suède", "Tunisie"],
-  G: ["Belgique", "Égypte", "Iran", "Nouvelle-Zélande"],
-  H: ["Espagne", "Cap-Vert", "Arabie saoudite", "Uruguay"],
-  I: ["France", "Sénégal", "Irak", "Norvège"],
-  J: ["Argentine", "Algérie", "Autriche", "Jordanie"],
-  K: ["Portugal", "RD Congo", "Ouzbékistan", "Colombie"],
-  L: ["Angleterre", "Croatie", "Ghana", "Panama"],
-};
+const BONUS_POINTS = 10;
+const BONUS_MESSAGE_UNTIL = "2026-06-30T21:00";
+const BONUS_TEXT = "Désolé, la MAJ a pris du temps, il n'a donc pas été possible de parier sur Canada–Afrique du Sud. Pour me faire pardonner : +10 points offerts à tout le monde 🎁";
 
+// ============================================================================
+// DRAPEAUX
+// ============================================================================
 const FLAGS = {
-  Mexique: "🇲🇽", "Afrique du Sud": "🇿🇦", "Corée du Sud": "🇰🇷", "Rép. tchèque": "🇨🇿",
-  Canada: "🇨🇦", "Bosnie-Herzégovine": "🇧🇦", Qatar: "🇶🇦", Suisse: "🇨🇭",
-  Brésil: "🇧🇷", Maroc: "🇲🇦", Haïti: "🇭🇹", Écosse: "🏴󠁧󠁢󠁳󠁣󠁴󠁿",
-  "États-Unis": "🇺🇸", Paraguay: "🇵🇾", Australie: "🇦🇺", Turquie: "🇹🇷",
-  Allemagne: "🇩🇪", Curaçao: "🇨🇼", "Côte d'Ivoire": "🇨🇮", Équateur: "🇪🇨",
-  "Pays-Bas": "🇳🇱", Japon: "🇯🇵", Suède: "🇸🇪", Tunisie: "🇹🇳",
-  Belgique: "🇧🇪", Égypte: "🇪🇬", Iran: "🇮🇷", "Nouvelle-Zélande": "🇳🇿",
-  Espagne: "🇪🇸", "Cap-Vert": "🇨🇻", "Arabie saoudite": "🇸🇦", Uruguay: "🇺🇾",
-  France: "🇫🇷", Sénégal: "🇸🇳", Irak: "🇮🇶", Norvège: "🇳🇴",
-  Argentine: "🇦🇷", Algérie: "🇩🇿", Autriche: "🇦🇹", Jordanie: "🇯🇴",
-  Portugal: "🇵🇹", "RD Congo": "🇨🇩", Ouzbékistan: "🇺🇿", Colombie: "🇨🇴",
-  Angleterre: "🏴󠁧󠁢󠁥󠁮󠁧󠁿", Croatie: "🇭🇷", Ghana: "🇬🇭", Panama: "🇵🇦",
+  Mexique: "🇲🇽", "Afrique du Sud": "🇿🇦", Canada: "🇨🇦", Suisse: "🇨🇭",
+  "Bosnie-Herzégovine": "🇧🇦", Brésil: "🇧🇷", Maroc: "🇲🇦",
+  "États-Unis": "🇺🇸", Paraguay: "🇵🇾", Australie: "🇦🇺",
+  Allemagne: "🇩🇪", "Côte d'Ivoire": "🇨🇮", Équateur: "🇪🇨",
+  "Pays-Bas": "🇳🇱", Japon: "🇯🇵", Suède: "🇸🇪",
+  Belgique: "🇧🇪", Égypte: "🇪🇬",
+  Espagne: "🇪🇸", "Cap-Vert": "🇨🇻", Uruguay: "🇺🇾",
+  France: "🇫🇷", Sénégal: "🇸🇳", Norvège: "🇳🇴",
+  Argentine: "🇦🇷", Algérie: "🇩🇿", Autriche: "🇦🇹",
+  Portugal: "🇵🇹", "RD Congo": "🇨🇩", Colombie: "🇨🇴",
+  Angleterre: "🏴󠁧󠁢󠁥󠁮󠁧󠁿", Croatie: "🇭🇷", Ghana: "🇬🇭",
 };
 const flag = (t) => FLAGS[t] || "⚽";
 
-const FIXTURES = [
-  ["A", "Mexique", "Afrique du Sud", "2026-06-11T21:00", "Mexico 🇲🇽"],
-  ["A", "Corée du Sud", "Rép. tchèque", "2026-06-12T04:00", "Guadalajara 🇲🇽"],
-  ["A", "Rép. tchèque", "Afrique du Sud", "2026-06-18T18:00", "Atlanta 🇺🇸"],
-  ["A", "Mexique", "Corée du Sud", "2026-06-19T03:00", "Guadalajara 🇲🇽"],
-  ["A", "Rép. tchèque", "Mexique", "2026-06-25T03:00", "Mexico 🇲🇽"],
-  ["A", "Afrique du Sud", "Corée du Sud", "2026-06-25T03:00", "Monterrey 🇲🇽"],
-  ["B", "Canada", "Bosnie-Herzégovine", "2026-06-12T21:00", "Toronto 🇨🇦"],
-  ["B", "Qatar", "Suisse", "2026-06-13T21:00", "Santa Clara 🇺🇸"],
-  ["B", "Suisse", "Bosnie-Herzégovine", "2026-06-18T21:00", "Inglewood 🇺🇸"],
-  ["B", "Canada", "Qatar", "2026-06-19T00:00", "Vancouver 🇨🇦"],
-  ["B", "Suisse", "Canada", "2026-06-24T21:00", "Vancouver 🇨🇦"],
-  ["B", "Bosnie-Herzégovine", "Qatar", "2026-06-24T21:00", "Seattle 🇺🇸"],
-  ["C", "Brésil", "Maroc", "2026-06-14T00:00", "New York 🇺🇸"],
-  ["C", "Haïti", "Écosse", "2026-06-14T03:00", "Foxborough 🇺🇸"],
-  ["C", "Brésil", "Haïti", "2026-06-20T00:00", "Foxborough 🇺🇸"],
-  ["C", "Écosse", "Maroc", "2026-06-20T03:00", "Philadelphie 🇺🇸"],
-  ["C", "Écosse", "Brésil", "2026-06-25T00:00", "Miami 🇺🇸"],
-  ["C", "Maroc", "Haïti", "2026-06-25T00:00", "Atlanta 🇺🇸"],
-  ["D", "États-Unis", "Paraguay", "2026-06-13T03:00", "Inglewood 🇺🇸"],
-  ["D", "Australie", "Turquie", "2026-06-14T06:00", "Vancouver 🇨🇦"],
-  ["D", "Turquie", "Paraguay", "2026-06-20T06:00", "Santa Clara 🇺🇸"],
-  ["D", "États-Unis", "Australie", "2026-06-19T21:00", "Seattle 🇺🇸"],
-  ["D", "Turquie", "États-Unis", "2026-06-26T04:00", "Inglewood 🇺🇸"],
-  ["D", "Paraguay", "Australie", "2026-06-26T04:00", "Santa Clara 🇺🇸"],
-  ["E", "Allemagne", "Curaçao", "2026-06-14T19:00", "Houston 🇺🇸"],
-  ["E", "Côte d'Ivoire", "Équateur", "2026-06-15T01:00", "Philadelphie 🇺🇸"],
-  ["E", "Allemagne", "Côte d'Ivoire", "2026-06-20T22:00", "Toronto 🇨🇦"],
-  ["E", "Équateur", "Curaçao", "2026-06-21T02:00", "Kansas City 🇺🇸"],
-  ["E", "Équateur", "Allemagne", "2026-06-25T22:00", "New York 🇺🇸"],
-  ["E", "Curaçao", "Côte d'Ivoire", "2026-06-25T22:00", "Philadelphie 🇺🇸"],
-  ["F", "Pays-Bas", "Japon", "2026-06-14T22:00", "Arlington 🇺🇸"],
-  ["F", "Suède", "Tunisie", "2026-06-15T04:00", "Monterrey 🇲🇽"],
-  ["F", "Pays-Bas", "Suède", "2026-06-20T19:00", "Houston 🇺🇸"],
-  ["F", "Tunisie", "Japon", "2026-06-21T06:00", "Monterrey 🇲🇽"],
-  ["F", "Tunisie", "Pays-Bas", "2026-06-26T01:00", "Kansas City 🇺🇸"],
-  ["F", "Japon", "Suède", "2026-06-26T01:00", "Arlington 🇺🇸"],
-  ["G", "Belgique", "Égypte", "2026-06-15T21:00", "Seattle 🇺🇸"],
-  ["G", "Iran", "Nouvelle-Zélande", "2026-06-16T03:00", "Inglewood 🇺🇸"],
-  ["G", "Belgique", "Iran", "2026-06-21T21:00", "Inglewood 🇺🇸"],
-  ["G", "Nouvelle-Zélande", "Égypte", "2026-06-22T03:00", "Vancouver 🇨🇦"],
-  ["G", "Nouvelle-Zélande", "Belgique", "2026-06-27T05:00", "Seattle 🇺🇸"],
-  ["G", "Égypte", "Iran", "2026-06-27T05:00", "Vancouver 🇨🇦"],
-  ["H", "Espagne", "Cap-Vert", "2026-06-15T18:00", "Atlanta 🇺🇸"],
-  ["H", "Arabie saoudite", "Uruguay", "2026-06-16T00:00", "Miami 🇺🇸"],
-  ["H", "Espagne", "Arabie saoudite", "2026-06-21T18:00", "Atlanta 🇺🇸"],
-  ["H", "Uruguay", "Cap-Vert", "2026-06-22T00:00", "Miami 🇺🇸"],
-  ["H", "Uruguay", "Espagne", "2026-06-27T02:00", "Houston 🇺🇸"],
-  ["H", "Cap-Vert", "Arabie saoudite", "2026-06-27T02:00", "Guadalajara 🇲🇽"],
-  ["I", "France", "Sénégal", "2026-06-16T21:00", "New York 🇺🇸"],
-  ["I", "Irak", "Norvège", "2026-06-17T00:00", "Foxborough 🇺🇸"],
-  ["I", "France", "Irak", "2026-06-22T23:00", "Philadelphie 🇺🇸"],
-  ["I", "Norvège", "Sénégal", "2026-06-23T02:00", "New York 🇺🇸"],
-  ["I", "Norvège", "France", "2026-06-26T21:00", "Foxborough 🇺🇸"],
-  ["I", "Sénégal", "Irak", "2026-06-26T21:00", "Toronto 🇨🇦"],
-  ["J", "Argentine", "Algérie", "2026-06-17T03:00", "Kansas City 🇺🇸"],
-  ["J", "Autriche", "Jordanie", "2026-06-17T06:00", "Santa Clara 🇺🇸"],
-  ["J", "Argentine", "Autriche", "2026-06-22T19:00", "Arlington 🇺🇸"],
-  ["J", "Jordanie", "Algérie", "2026-06-23T05:00", "Santa Clara 🇺🇸"],
-  ["J", "Jordanie", "Argentine", "2026-06-28T04:00", "Kansas City 🇺🇸"],
-  ["J", "Algérie", "Autriche", "2026-06-28T04:00", "Arlington 🇺🇸"],
-  ["K", "Portugal", "RD Congo", "2026-06-17T19:00", "Houston 🇺🇸"],
-  ["K", "Ouzbékistan", "Colombie", "2026-06-18T04:00", "Mexico 🇲🇽"],
-  ["K", "Portugal", "Ouzbékistan", "2026-06-23T19:00", "Houston 🇺🇸"],
-  ["K", "Colombie", "RD Congo", "2026-06-24T04:00", "Guadalajara 🇲🇽"],
-  ["K", "Colombie", "Portugal", "2026-06-28T01:30", "Miami 🇺🇸"],
-  ["K", "RD Congo", "Ouzbékistan", "2026-06-28T01:30", "Atlanta 🇺🇸"],
-  ["L", "Angleterre", "Croatie", "2026-06-17T22:00", "Arlington 🇺🇸"],
-  ["L", "Ghana", "Panama", "2026-06-18T01:00", "Toronto 🇨🇦"],
-  ["L", "Angleterre", "Ghana", "2026-06-23T22:00", "Foxborough 🇺🇸"],
-  ["L", "Panama", "Croatie", "2026-06-24T01:00", "Toronto 🇨🇦"],
-  ["L", "Panama", "Angleterre", "2026-06-27T23:00", "New York 🇺🇸"],
-  ["L", "Croatie", "Ghana", "2026-06-27T23:00", "Philadelphie 🇺🇸"],
+// ============================================================================
+// BRACKET — Les 16 matchs des seizièmes (officiel FIFA, horaires France)
+// ============================================================================
+const BRACKET_R16 = [
+  ["R16-1",  "Afrique du Sud", "Canada",            "2026-06-28T21:00", "Los Angeles 🇺🇸", { h: 0, a: 1 }],
+  ["R16-2",  "Brésil",         "Japon",             "2026-06-29T19:00", "Houston 🇺🇸"],
+  ["R16-3",  "Allemagne",      "Paraguay",          "2026-06-29T22:30", "Boston 🇺🇸"],
+  ["R16-4",  "Pays-Bas",       "Maroc",             "2026-06-30T03:00", "Monterrey 🇲🇽"],
+  ["R16-5",  "Côte d'Ivoire",  "Norvège",           "2026-06-30T19:00", "Dallas 🇺🇸"],
+  ["R16-6",  "France",         "Suède",             "2026-06-30T23:00", "New York 🇺🇸"],
+  ["R16-7",  "Mexique",        "Équateur",          "2026-07-01T03:00", "Mexico 🇲🇽"],
+  ["R16-8",  "Angleterre",     "RD Congo",          "2026-07-01T18:00", "Atlanta 🇺🇸"],
+  ["R16-9",  "Belgique",       "Sénégal",           "2026-07-01T22:00", "Seattle 🇺🇸"],
+  ["R16-10", "États-Unis",     "Bosnie-Herzégovine","2026-07-02T02:00", "San Francisco 🇺🇸"],
+  ["R16-11", "Espagne",        "Autriche",          "2026-07-02T21:00", "Los Angeles 🇺🇸"],
+  ["R16-12", "Portugal",       "Croatie",           "2026-07-03T01:00", "Toronto 🇨🇦"],
+  ["R16-13", "Suisse",         "Algérie",           "2026-07-03T05:00", "Vancouver 🇨🇦"],
+  ["R16-14", "Australie",      "Égypte",            "2026-07-03T20:00", "Dallas 🇺🇸"],
+  ["R16-15", "Argentine",      "Cap-Vert",          "2026-07-04T00:00", "Miami 🇺🇸"],
+  ["R16-16", "Colombie",       "Ghana",             "2026-07-04T03:30", "Kansas City 🇺🇸"],
 ];
+
+function buildMatches() {
+  return BRACKET_R16.map(([id, home, away, kickoff, venue, resultFixed]) => ({
+    id, round: "16es", home, away, kickoff, venue,
+    resultFixed: resultFixed || null,
+  }));
+}
+const MATCHES = buildMatches();
+const KICKOFF_BY_ID = Object.fromEntries(MATCHES.map((m) => [m.id, m.kickoff]));
+const FIXED_RESULTS = Object.fromEntries(
+  MATCHES.filter((m) => m.resultFixed).map((m) => [m.id, m.resultFixed])
+);
+
+const M6_MATCHES = new Set(["R16-1", "R16-2", "R16-3", "R16-6"]);
+function channelsFor(id) {
+  return M6_MATCHES.has(id) ? ["M6", "beIN Sports"] : ["beIN Sports"];
+}
 
 const JOURS = ["dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi"];
 const MOIS = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."];
@@ -131,21 +85,9 @@ function formatKickoff(iso) {
   };
 }
 
-function buildMatches() {
-  return FIXTURES.map(([group, home, away, kickoff, venue], i) => ({
-    id: `M${i + 1}`, group, home, away, kickoff: kickoff || null, venue: venue || null,
-  }));
-}
-const MATCHES = buildMatches();
-const KICKOFF_BY_ID = Object.fromEntries(MATCHES.map((m) => [m.id, m.kickoff]));
-
-// Matchs diffusés en clair sur M6 (à compléter quand M6 publie la liste)
-const M6_MATCHES = new Set(["M1", "M49", "M51", "M53"]);
-function channelsFor(id) {
-  return M6_MATCHES.has(id) ? ["M6", "beIN Sports"] : ["beIN Sports"];
-}
-
-// Scoring
+// ============================================================================
+// SCORING — 10 score exact / 5 bon vainqueur / 3 bonne différence
+// ============================================================================
 function scorePrediction(pred, actual) {
   if (!actual || actual.h == null || actual.a == null) return null;
   if (!pred || pred.h == null || pred.a == null) return 0;
@@ -160,7 +102,7 @@ function scorePrediction(pred, actual) {
 }
 
 // ============================================================================
-// APP — racine, gère la session utilisateur
+// APP racine
 // ============================================================================
 export default function App() {
   const [session, setSession] = useState(null);
@@ -168,13 +110,11 @@ export default function App() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // récupère la session au chargement
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       if (session) loadProfile(session.user.id);
       else setLoading(false);
     });
-    // écoute les changements (connexion/déconnexion)
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
       if (session) loadProfile(session.user.id);
@@ -189,20 +129,17 @@ export default function App() {
     setLoading(false);
   }
 
-  if (loading) {
-    return <Shell><p style={{ textAlign: "center", padding: 60, color: MUTE }}>Chargement…</p></Shell>;
-  }
-
+  if (loading) return <Shell><p style={{ textAlign: "center", padding: 60, color: MUTE }}>Chargement…</p></Shell>;
   if (!session) return <AuthScreen />;
   if (!profile) return <PseudoScreen userId={session.user.id} onDone={loadProfile} />;
   return <Game session={session} profile={profile} />;
 }
 
 // ============================================================================
-// AUTH SCREEN — connexion / inscription
+// AUTH SCREEN
 // ============================================================================
 function AuthScreen() {
-  const [mode, setMode] = useState("login"); // login | signup
+  const [mode, setMode] = useState("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -219,7 +156,7 @@ function AuthScreen() {
       if (mode === "signup") {
         const { error } = await supabase.auth.signUp({ email, password });
         if (error) throw error;
-        setMsg({ type: "ok", text: "Compte créé ! Vérifie ta boîte mail pour confirmer ton adresse, puis reviens te connecter." });
+        setMsg({ type: "ok", text: "Compte créé ! Vérifie ta boîte mail pour confirmer, puis reviens te connecter." });
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
@@ -235,9 +172,7 @@ function AuthScreen() {
       <div style={s.loginWrap}>
         <img src="/fifa-logo.png" alt="Coupe du Monde 2026" style={s.heroLogo} />
         <h1 style={s.loginTitle}>TechInno<br />Pronos<br /><span style={{ color: ACCENT }}>Mondial 26</span></h1>
-        <p style={s.loginSub}>
-          {mode === "signup" ? "Crée ton compte pour participer" : "Connecte-toi pour jouer"}
-        </p>
+        <p style={s.loginSub}>{mode === "signup" ? "Crée ton compte pour participer" : "Connecte-toi pour jouer"}</p>
         <input style={s.bigInput} placeholder="Email" type="email" autoComplete="email"
           value={email} onChange={(e) => setEmail(e.target.value)} />
         <input style={s.bigInput} placeholder="Mot de passe (min. 6 caractères)" type="password"
@@ -265,7 +200,7 @@ function traduireErreur(msg) {
 }
 
 // ============================================================================
-// PSEUDO SCREEN — choisir un pseudo au premier login
+// PSEUDO SCREEN
 // ============================================================================
 function PseudoScreen({ userId, onDone }) {
   const [pseudo, setPseudo] = useState("");
@@ -289,15 +224,13 @@ function PseudoScreen({ userId, onDone }) {
   return (
     <Shell>
       <div style={s.loginWrap}>
-        <div style={s.ball}>👋</div>
+        <div style={{ fontSize: 56 }}>👋</div>
         <h1 style={s.loginTitle}>Bienvenue !</h1>
         <p style={s.loginSub}>Choisis un pseudo qui apparaîtra dans le classement.</p>
         <input style={s.bigInput} placeholder="Ton pseudo" value={pseudo}
           onChange={(e) => setPseudo(e.target.value)} maxLength={20}
           onKeyDown={(e) => e.key === "Enter" && save()} />
-        <button style={s.cta} disabled={busy} onClick={save}>
-          {busy ? "..." : "C'est parti →"}
-        </button>
+        <button style={s.cta} disabled={busy} onClick={save}>{busy ? "..." : "C'est parti →"}</button>
         {err && <div style={s.alertErr}>{err}</div>}
       </div>
     </Shell>
@@ -305,18 +238,19 @@ function PseudoScreen({ userId, onDone }) {
 }
 
 // ============================================================================
-// GAME — l'app principale, une fois connecté avec un pseudo
+// GAME
 // ============================================================================
 function Game({ session, profile }) {
   const [tab, setTab] = useState("matchs");
   const [adminOn, setAdminOn] = useState(false);
-  const [groupFilter, setGroupFilter] = useState("I");
-  const [allPredictions, setAllPredictions] = useState([]); // toutes les lignes de la table
-  const [results, setResults] = useState({}); // {matchId: {h, a}}
-  const [profiles, setProfiles] = useState({}); // {userId: pseudo}
-  const [myPreds, setMyPreds] = useState({}); // {matchId: {h, a}}
+  const [allPredictions, setAllPredictions] = useState([]);
+  const [results, setResults] = useState({});
+  const [profiles, setProfiles] = useState({});
+  const [myPreds, setMyPreds] = useState({});
   const [saved, setSaved] = useState(false);
-  const [viewingPlayer, setViewingPlayer] = useState(null); // uid du joueur dont on regarde les pronos, ou null
+  const [viewingPlayer, setViewingPlayer] = useState(null);
+  const [bonusDismissed, setBonusDismissed] = useState(false);
+  const [tabWinnerPrompt, setTabWinnerPrompt] = useState(null);
   const userId = session.user.id;
 
   useEffect(() => { loadData(); }, []);
@@ -328,7 +262,7 @@ function Game({ session, profile }) {
       supabase.from("profiles").select("id, pseudo"),
     ]);
     setAllPredictions(preds.data || []);
-    const resMap = {};
+    const resMap = { ...FIXED_RESULTS };
     (res.data || []).forEach((r) => { resMap[r.match_id] = { h: r.home_score, a: r.away_score }; });
     setResults(resMap);
     const profMap = {};
@@ -344,16 +278,29 @@ function Game({ session, profile }) {
   function setPred(matchId, side, val) {
     const ko = KICKOFF_BY_ID[matchId];
     if (ko && Date.now() >= new Date(ko).getTime()) return;
+    if (FIXED_RESULTS[matchId]) return;
     const clean = val === "" ? null : Math.max(0, Math.min(20, parseInt(val) || 0));
     setMyPreds((m) => ({ ...m, [matchId]: { ...(m[matchId] || {}), [side]: clean } }));
   }
 
   async function savePreds() {
-    // upsert toutes les prédictions de l'utilisateur
+    // Cherche un prono de nul sans winner TAB choisi (sur match non commencé)
+    const drawWithoutWinner = Object.entries(myPreds).find(([mid, v]) => {
+      if (v.h == null || v.a == null) return false;
+      if (v.h !== v.a) return false;
+      const ko = KICKOFF_BY_ID[mid];
+      if (ko && Date.now() >= new Date(ko).getTime()) return false;
+      return !v.tabWinner;
+    });
+    if (drawWithoutWinner) {
+      setTabWinnerPrompt(drawWithoutWinner[0]);
+      return;
+    }
     const rows = Object.entries(myPreds)
       .filter(([_, v]) => v.h != null || v.a != null)
       .map(([match_id, v]) => ({
-        user_id: userId, match_id, home_score: v.h, away_score: v.a,
+        user_id: userId, match_id,
+        home_score: v.h, away_score: v.a,
       }));
     if (rows.length === 0) return;
     const { error } = await supabase.from("predictions").upsert(rows);
@@ -367,13 +314,14 @@ function Game({ session, profile }) {
   }
 
   function setResult(matchId, side, val) {
+    if (FIXED_RESULTS[matchId]) return;
     const clean = val === "" ? null : Math.max(0, Math.min(20, parseInt(val) || 0));
     setResults((r) => ({ ...r, [matchId]: { ...(r[matchId] || {}), [side]: clean } }));
   }
 
   async function saveResults() {
     const rows = Object.entries(results)
-      .filter(([_, v]) => v.h != null || v.a != null)
+      .filter(([mid, v]) => !FIXED_RESULTS[mid] && (v.h != null || v.a != null))
       .map(([match_id, v]) => ({ match_id, home_score: v.h, away_score: v.a }));
     if (rows.length === 0) return;
     const { error } = await supabase.from("results").upsert(rows);
@@ -384,7 +332,8 @@ function Game({ session, profile }) {
     } else alert("Erreur : " + error.message);
   }
 
-  // Classement
+  const bonusActive = Date.now() < new Date(BONUS_MESSAGE_UNTIL).getTime();
+
   const leaderboard = useMemo(() => {
     const byUser = {};
     allPredictions.forEach((p) => {
@@ -392,12 +341,13 @@ function Game({ session, profile }) {
       if (!byUser[key]) byUser[key] = {};
       byUser[key][p.match_id] = { h: p.home_score, a: p.away_score };
     });
-    const rows = Object.keys(byUser).map((uid) => {
-      let pts = 0, exact = 0, good = 0, played = 0;
+    const allUserIds = new Set([...Object.keys(byUser), ...Object.keys(profiles)]);
+    const rows = Array.from(allUserIds).map((uid) => {
+      let pts = BONUS_POINTS;
+      let exact = 0, good = 0, played = 0;
       MATCHES.forEach((m) => {
-        const userPred = byUser[uid][m.id];
+        const userPred = byUser[uid]?.[m.id];
         const matchRes = results[m.id];
-        // On compte UNIQUEMENT les matchs où le joueur a vraiment parié ET dont on a le résultat
         const hasPred = userPred && userPred.h != null && userPred.a != null;
         const hasResult = matchRes && matchRes.h != null && matchRes.a != null;
         if (hasPred && hasResult) {
@@ -408,24 +358,27 @@ function Game({ session, profile }) {
         }
       });
       return { uid, pseudo: profiles[uid] || "?", pts, exact, good, played };
-    });
+    }).filter((r) => r.pseudo !== "?");
     return rows.sort((a, b) => b.pts - a.pts || b.exact - a.exact);
   }, [allPredictions, results, profiles]);
 
-  const totalPlayed = Object.values(results).filter((r) => r?.h != null && r?.a != null).length;
-  const myScore = leaderboard.find((r) => r.uid === userId)?.pts || 0;
+  const myScore = leaderboard.find((r) => r.uid === userId)?.pts || BONUS_POINTS;
 
-  // Prochains matchs des 24h : ceux qui n'ont pas encore commencé et qui démarrent dans <24h.
-  // Si aucun match dans les 24h à venir, on prend les 3 prochains à jouer.
   const upcomingMatches = useMemo(() => {
     const now = Date.now();
     const in24h = now + 24 * 60 * 60 * 1000;
-    const futureMatches = MATCHES
-      .filter((m) => m.kickoff && new Date(m.kickoff).getTime() > now)
+    const future = MATCHES
+      .filter((m) => m.kickoff && new Date(m.kickoff).getTime() > now && !FIXED_RESULTS[m.id])
       .sort((a, b) => new Date(a.kickoff).getTime() - new Date(b.kickoff).getTime());
-    const next24h = futureMatches.filter((m) => new Date(m.kickoff).getTime() <= in24h);
-    return next24h.length > 0 ? next24h : futureMatches.slice(0, 3);
+    const next24h = future.filter((m) => new Date(m.kickoff).getTime() <= in24h);
+    return next24h.length > 0 ? next24h : future.slice(0, 3);
   }, []);
+
+  function resolveTabWinner(matchId, winnerTeam) {
+    setMyPreds((m) => ({ ...m, [matchId]: { ...(m[matchId] || {}), tabWinner: winnerTeam } }));
+    setTabWinnerPrompt(null);
+    setTimeout(() => savePreds(), 100);
+  }
 
   return (
     <Shell>
@@ -436,11 +389,23 @@ function Game({ session, profile }) {
         </div>
         <div style={s.headerStats}>
           <div style={s.statPill}><b>{myScore}</b> pts</div>
-          <div style={s.statPillGhost}>{totalPlayed}/72 joués</div>
+          <div style={s.statPillGhost}>16es de finale</div>
         </div>
       </div>
 
-      {/* ENCADRÉ PROCHAINS MATCHS (24h) — affiché en haut, toujours visible */}
+      {bonusActive && !bonusDismissed && (
+        <div style={s.bonusBox}>
+          <div style={s.bonusContent}>
+            <span style={s.bonusEmoji}>🎁</span>
+            <div style={{ flex: 1 }}>
+              <div style={s.bonusTitle}>+{BONUS_POINTS} points offerts à tous !</div>
+              <div style={s.bonusText}>{BONUS_TEXT}</div>
+            </div>
+            <button style={s.bonusClose} onClick={() => setBonusDismissed(true)}>✕</button>
+          </div>
+        </div>
+      )}
+
       <UpcomingBox
         matches={upcomingMatches}
         myPreds={myPreds}
@@ -448,6 +413,14 @@ function Game({ session, profile }) {
         onSave={savePreds}
         saved={saved}
       />
+
+      <div style={s.tabRulesInfo}>
+        <span style={s.tabRulesIcon}>⚽</span>
+        <div>
+          <b>Match nul ?</b> En élimination directe, chaque match doit avoir un vainqueur.
+          Si tu pronostiques un nul (ex : 1–1), l'app te demandera de choisir qui passe aux <b>tirs au but</b>.
+        </div>
+      </div>
 
       <div style={s.tabs}>
         {[
@@ -464,27 +437,20 @@ function Game({ session, profile }) {
 
       {tab === "matchs" && (
         <>
-          <div style={s.groupBar}>
-            {Object.keys(GROUPS).map((g) => (
-              <button key={g} onClick={() => setGroupFilter(g)}
-                style={{ ...s.groupChip, ...(groupFilter === g ? s.groupChipActive : {}) }}>{g}</button>
-            ))}
-          </div>
-          <div style={s.groupHeading}>
-            Groupe {groupFilter}
-            <span style={s.groupTeams}>{GROUPS[groupFilter].map((t) => `${flag(t)} ${t}`).join("  ·  ")}</span>
-          </div>
-          {MATCHES.filter((m) => m.group === groupFilter).map((m) => {
+          <div style={s.bracketTitle}>🏆 Seizièmes de finale</div>
+          <p style={s.bracketSub}>16 matchs à élimination directe. Devine le score, et si tu pronostiques un nul, indique aussi qui passe aux tirs au but.</p>
+          {MATCHES.map((m) => {
             const p = myPreds[m.id] || {};
             const res = results[m.id];
             const pts = scorePrediction(p, res);
             const ko = formatKickoff(m.kickoff);
-            const locked = ko ? Date.now() >= ko.ts : false;
+            const isFixed = !!FIXED_RESULTS[m.id];
+            const locked = isFixed || (ko ? Date.now() >= ko.ts : false);
             return (
               <div key={m.id} style={{ ...s.matchCard, ...(locked ? s.matchCardLocked : {}) }}>
                 <div style={s.koLine}>
                   <span style={s.koDate}>🗓️ {ko ? `${ko.long} · ${ko.time}` : "Date à confirmer"}</span>
-                  {locked ? <span style={s.lockTag}>🔒 Pronos fermés</span>
+                  {locked ? <span style={s.lockTag}>{isFixed ? "✅ Joué" : "🔒 Pronos fermés"}</span>
                     : ko && <span style={s.koTz}>heure FR</span>}
                 </div>
                 <div style={s.channelLine}>
@@ -506,10 +472,15 @@ function Game({ session, profile }) {
                   </div>
                   <span style={{ ...s.team, justifyContent: "flex-end" }}>{m.away}<span style={s.flag}>{flag(m.away)}</span></span>
                 </div>
+                {p.h != null && p.a != null && p.h === p.a && !locked && (
+                  <div style={s.drawHint}>
+                    ⚠️ Match nul prédit — vainqueur aux TAB : <b>{p.tabWinner || "à confirmer à l'enregistrement"}</b>
+                  </div>
+                )}
                 {res?.h != null && (
                   <div style={s.resultLine}>
-                    Résultat réel : <b>{res.h} — {res.a}</b>
-                    {pts != null && <span style={{ ...s.ptsBadge, background: pts >= 10 ? GOLD : pts >= 5 ? "#8FD694" : pts > 0 ? "#cde" : "#eee" }}>+{pts} pts</span>}
+                    Résultat : <b>{res.h} — {res.a}</b>
+                    {pts != null && <span style={{ ...s.ptsBadge, background: pts >= 10 ? GOLD : pts >= 5 ? "#8FD694" : pts > 0 ? "#FDD9B8" : "#eee" }}>+{pts} pts</span>}
                   </div>
                 )}
               </div>
@@ -525,7 +496,7 @@ function Game({ session, profile }) {
       {tab === "classement" && (
         <div>
           {leaderboard.length === 0 ? (
-            <p style={{ textAlign: "center", padding: 30, color: MUTE, fontWeight: 500 }}>Aucun prono enregistré pour l'instant.</p>
+            <p style={{ textAlign: "center", padding: 30, color: MUTE, fontWeight: 500 }}>Aucun joueur inscrit pour l'instant.</p>
           ) : (
             <>
               <div style={s.lbHeader}>
@@ -552,7 +523,7 @@ function Game({ session, profile }) {
                 </div>
               ))}
               <p style={s.lbLegend}>
-                <b>Exact</b> = score exact (+10 pts) · <b>Bon</b> = bon résultat ou bonne différence de buts (+5 ou +3)
+                <b>Exact</b> = score exact (+10) · <b>Bon</b> = bon vainqueur ou bonne différence (+5 ou +3) · <b>+{BONUS_POINTS} pts</b> de bonus inclus pour tous
               </p>
             </>
           )}
@@ -562,37 +533,39 @@ function Game({ session, profile }) {
       {tab === "regles" && (
         <div style={s.rulesWrap}>
           <p style={s.rulesIntro}>
-            Le principe est simple : avant chaque match, tu devines le score final.
-            Plus ton pronostic est proche de la réalité, plus tu gagnes de points. 🎯
+            🏆 On entre dans la phase à élimination directe ! 16 matchs aux seizièmes, puis 8es, quarts, demi et finale. Devine les scores, marque des points, vise le podium.
           </p>
           <div style={s.rulesSectionTitle}>Comment marquer des points</div>
           <div style={s.ruleCard}>
             <div style={{ ...s.rulePts, background: GOLD }}>+10</div>
             <div>
               <div style={s.ruleName}>Score exact</div>
-              <div style={s.ruleDesc}>Tu trouves le score pile poil. Ex : tu pronostiques 2–1 et le match finit 2–1.</div>
+              <div style={s.ruleDesc}>Tu trouves le score final pile poil (avant prolongations / TAB). Ex : 2–1 et c'est 2–1.</div>
             </div>
           </div>
           <div style={s.ruleCard}>
             <div style={{ ...s.rulePts, background: "#8FD694" }}>+5</div>
             <div>
-              <div style={s.ruleName}>Bon résultat</div>
-              <div style={s.ruleDesc}>Tu trouves la bonne issue (victoire, nul ou défaite) mais pas le score exact.</div>
+              <div style={s.ruleName}>Bon vainqueur</div>
+              <div style={s.ruleDesc}>Tu trouves qui gagne le match (à 90 min ou nul + bon vainqueur aux TAB).</div>
             </div>
           </div>
           <div style={s.ruleCard}>
-            <div style={{ ...s.rulePts, background: "#Bcd6f5", color: INK }}>+3</div>
+            <div style={{ ...s.rulePts, background: "#FDD9B8", color: INK }}>+3</div>
             <div>
               <div style={s.ruleName}>Bonne différence de buts</div>
-              <div style={s.ruleDesc}>Tu trouves l'écart exact entre les deux équipes. Ex : tu dis 2–0, c'est 3–1.</div>
+              <div style={s.ruleDesc}>Tu trouves l'écart exact entre les deux équipes (ex : tu dis 2–0, c'est 3–1).</div>
             </div>
           </div>
-          <p style={s.rulesNote}>💡 Bon résultat et bonne différence peuvent se cumuler. Score exact = max 10 points.</p>
+
+          <p style={s.rulesNote}>
+            ⚽ <b>Spécial élimination directe :</b> chaque match doit avoir un vainqueur. Si tu pronostiques un nul, l'app te demandera de préciser qui passe aux tirs au but pour valider ton pari.
+          </p>
 
           <div style={s.rulesSectionTitle}>Où regarder les matchs</div>
           <p style={s.rulesIntro}>
-            📺 <b style={{ color: ACCENT }}>beIN Sports</b> diffuse les 104 matchs (sur abonnement).
-            Les matchs marqués <b style={{ color: "#1E9E5A" }}>M6</b> sont aussi en clair (M6, W9, M6+) — dont tous ceux de la France.
+            📺 <b style={{ color: ACCENT }}>beIN Sports</b> diffuse tous les matchs (abonnement).
+            Les matchs marqués <b style={{ color: "#1E9E5A" }}>M6</b> sont aussi en clair (M6, W9, M6+) — dont ceux des Bleus.
           </p>
         </div>
       )}
@@ -601,31 +574,27 @@ function Game({ session, profile }) {
         <div>
           {!adminOn ? (
             <div style={s.adminLock}>
-              <p style={{ marginBottom: 16 }}>🔒 Espace pour saisir les <b>vrais résultats</b> des matchs (réservé à l'organisateur).</p>
+              <p style={{ marginBottom: 16 }}>🔒 Espace pour saisir les <b>vrais résultats</b> des matchs.</p>
               <button style={s.cta} onClick={() => setAdminOn(true)}>Activer le mode résultats</button>
             </div>
           ) : (
             <>
               <p style={s.adminHint}>Saisis les scores réels au fur et à mesure. Le classement se met à jour automatiquement.</p>
-              {Object.keys(GROUPS).map((g) => (
-                <div key={g} style={{ marginBottom: 18 }}>
-                  <div style={s.adminGroupTitle}>Groupe {g}</div>
-                  {MATCHES.filter((m) => m.group === g).map((m) => {
-                    const res = results[m.id] || {};
-                    return (
-                      <div key={m.id} style={s.adminRow}>
-                        <span style={s.adminTeam}>{flag(m.home)} {m.home}</span>
-                        <input type="number" min="0" max="20" value={res.h ?? ""}
-                          onChange={(e) => setResult(m.id, "h", e.target.value)} style={s.scoreInputSm} />
-                        <span style={{ opacity: 0.4 }}>—</span>
-                        <input type="number" min="0" max="20" value={res.a ?? ""}
-                          onChange={(e) => setResult(m.id, "a", e.target.value)} style={s.scoreInputSm} />
-                        <span style={{ ...s.adminTeam, textAlign: "right" }}>{m.away} {flag(m.away)}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              ))}
+              {MATCHES.map((m) => {
+                const res = results[m.id] || {};
+                const isFixed = !!FIXED_RESULTS[m.id];
+                return (
+                  <div key={m.id} style={s.adminRow}>
+                    <span style={s.adminTeam}>{flag(m.home)} {m.home}</span>
+                    <input type="number" min="0" max="20" value={res.h ?? ""} disabled={isFixed}
+                      onChange={(e) => setResult(m.id, "h", e.target.value)} style={s.scoreInputSm} />
+                    <span style={{ opacity: 0.4 }}>—</span>
+                    <input type="number" min="0" max="20" value={res.a ?? ""} disabled={isFixed}
+                      onChange={(e) => setResult(m.id, "a", e.target.value)} style={s.scoreInputSm} />
+                    <span style={{ ...s.adminTeam, textAlign: "right" }}>{m.away} {flag(m.away)}</span>
+                  </div>
+                );
+              })}
               <div style={s.saveBar}>
                 <button style={s.cta} onClick={saveResults}>💾 Enregistrer les résultats</button>
                 {saved && <span style={s.savedMsg}>✓ Enregistré !</span>}
@@ -646,21 +615,25 @@ function Game({ session, profile }) {
         />
       )}
 
+      {tabWinnerPrompt && (
+        <TabWinnerModal
+          match={MATCHES.find((m) => m.id === tabWinnerPrompt)}
+          onChoose={(winner) => resolveTabWinner(tabWinnerPrompt, winner)}
+          onCancel={() => setTabWinnerPrompt(null)}
+        />
+      )}
+
       <button style={s.logout} onClick={() => supabase.auth.signOut()}>Se déconnecter</button>
     </Shell>
   );
 }
 
 // ============================================================================
-// UPCOMING BOX — encadré "Prochains matchs (24h)" en haut de l'app
+// UPCOMING BOX
 // ============================================================================
 function UpcomingBox({ matches, myPreds, setPred, onSave, saved }) {
   if (matches.length === 0) {
-    return (
-      <div style={s.upcomingEmpty}>
-        ⚽ Aucun match à venir dans les 24h. La compétition est-elle terminée ?
-      </div>
-    );
+    return <div style={s.upcomingEmpty}>⚽ Aucun match à venir dans les 24h.</div>;
   }
   const isWithin24h = matches.length > 0 && new Date(matches[0].kickoff).getTime() - Date.now() <= 24 * 60 * 60 * 1000;
   return (
@@ -676,7 +649,7 @@ function UpcomingBox({ matches, myPreds, setPred, onSave, saved }) {
           <div key={m.id} style={s.upcomingRow}>
             <div style={s.upcomingTop}>
               <span style={s.upcomingDate}>{ko ? `${ko.long.slice(0, 3)}. ${ko.long.split(" ").slice(1).join(" ")} · ${ko.time}` : ""}</span>
-              <span style={s.upcomingGroup}>Groupe {m.group}</span>
+              <span style={s.upcomingGroup}>16es</span>
             </div>
             <div style={s.upcomingMatch}>
               <span style={s.upcomingTeam}><span style={s.flag}>{flag(m.home)}</span>{m.home}</span>
@@ -701,10 +674,37 @@ function UpcomingBox({ matches, myPreds, setPred, onSave, saved }) {
 }
 
 // ============================================================================
-// MODAL — voir les pronos d'un joueur sur les matchs TERMINÉS
+// MODAL — vainqueur aux TAB
+// ============================================================================
+function TabWinnerModal({ match, onChoose, onCancel }) {
+  if (!match) return null;
+  return (
+    <div style={s.modalOverlay} onClick={onCancel}>
+      <div style={{ ...s.modalBox, alignSelf: "center" }} onClick={(e) => e.stopPropagation()}>
+        <div style={s.modalHeader}>
+          <div>
+            <div style={s.modalTitle}>Match nul prédit ?</div>
+            <div style={s.modalSubtitle}>En élimination directe, il faut un vainqueur. Qui passe aux tirs au but ?</div>
+          </div>
+          <button style={s.modalClose} onClick={onCancel}>✕</button>
+        </div>
+        <div style={{ padding: "20px 22px" }}>
+          <button style={s.tabChoice} onClick={() => onChoose(match.home)}>
+            <span style={{ fontSize: 24 }}>{flag(match.home)}</span> {match.home}
+          </button>
+          <button style={s.tabChoice} onClick={() => onChoose(match.away)}>
+            <span style={{ fontSize: 24 }}>{flag(match.away)}</span> {match.away}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// MODAL — pronos d'un joueur (matchs terminés)
 // ============================================================================
 function PlayerPronosModal({ uid, pseudo, isMe, allPredictions, results, onClose }) {
-  // récupère les pronos de ce joueur
   const userPreds = {};
   allPredictions.forEach((p) => {
     if (p.user_id === uid) {
@@ -712,7 +712,6 @@ function PlayerPronosModal({ uid, pseudo, isMe, allPredictions, results, onClose
     }
   });
 
-  // Liste des matchs TERMINÉS où le joueur a parié, triés du plus récent au plus ancien
   const rows = MATCHES
     .filter((m) => {
       const pred = userPreds[m.id];
@@ -737,11 +736,10 @@ function PlayerPronosModal({ uid, pseudo, isMe, allPredictions, results, onClose
         <div style={s.modalHeader}>
           <div>
             <div style={s.modalTitle}>{pseudo}{isMe && " (toi)"}</div>
-            <div style={s.modalSubtitle}>{rows.length} prono{rows.length > 1 ? "s" : ""} sur matchs terminés · {totalPts} pts</div>
+            <div style={s.modalSubtitle}>{rows.length} prono{rows.length > 1 ? "s" : ""} sur matchs terminés · {totalPts} pts (hors bonus)</div>
           </div>
           <button style={s.modalClose} onClick={onClose}>✕</button>
         </div>
-
         <div style={s.modalBody}>
           {rows.length === 0 ? (
             <p style={s.modalEmpty}>Aucun prono à afficher pour l'instant. Reviens après quelques matchs joués !</p>
@@ -752,7 +750,7 @@ function PlayerPronosModal({ uid, pseudo, isMe, allPredictions, results, onClose
                 <div key={m.id} style={s.pronoCard}>
                   <div style={s.pronoTop}>
                     <span style={s.pronoDate}>{ko ? `${ko.long.slice(0, 3)}. ${ko.long.split(" ").slice(1).join(" ")}` : ""}</span>
-                    <span style={s.pronoGroup}>Groupe {m.group}</span>
+                    <span style={s.pronoGroup}>16es</span>
                   </div>
                   <div style={s.pronoRow}>
                     <span style={s.pronoTeam}><span style={s.flag}>{flag(m.home)}</span>{m.home}</span>
@@ -761,7 +759,7 @@ function PlayerPronosModal({ uid, pseudo, isMe, allPredictions, results, onClose
                   </div>
                   <div style={s.pronoFooter}>
                     <span style={s.pronoActual}>Résultat réel : <b>{res.h} — {res.a}</b></span>
-                    <span style={{ ...s.pronoPts, background: pts >= 10 ? GOLD : pts >= 5 ? "#8FD694" : pts > 0 ? "#cde" : "#eee" }}>
+                    <span style={{ ...s.pronoPts, background: pts >= 10 ? GOLD : pts >= 5 ? "#8FD694" : pts > 0 ? "#FDD9B8" : "#eee" }}>
                       +{pts} pt{pts > 1 ? "s" : ""}
                     </span>
                   </div>
@@ -776,36 +774,31 @@ function PlayerPronosModal({ uid, pseudo, isMe, allPredictions, results, onClose
 }
 
 function Shell({ children }) {
-  return (
-    <div style={s.bg}>
-      <div style={s.frame}>{children}</div>
-    </div>
-  );
+  return <div style={s.bg}><div style={s.frame}>{children}</div></div>;
 }
 
 // ============================================================================
-// STYLES (identiques à la version artifact, version premium bleue)
+// STYLES — thème ORANGE
 // ============================================================================
-const ACCENT = "#1E5BD6";
-const ACCENT_DARK = "#1647A8";
+const ACCENT = "#EA6A1F";
+const ACCENT_DARK = "#C24E0E";
 const GOLD = "#E9B949";
-const INK = "#0B1A33";
-const PAPER = "#FBFCFE";
+const INK = "#1A0F08";
+const PAPER = "#FFFBF6";
 const BODY = "'Manrope', -apple-system, BlinkMacSystemFont, sans-serif";
 const DISPLAY = "'Sora', 'Manrope', sans-serif";
-const LINE = "#E7ECF4";
-const MUTE = "#6B7689";
+const LINE = "#F3E5D5";
+const MUTE = "#8B7B69";
 
 const s = {
-  bg: { minHeight: "100vh", background: `linear-gradient(165deg, #0E2347 0%, ${INK} 45%, #081428 100%)`, fontFamily: BODY, padding: "28px 14px", boxSizing: "border-box" },
-  frame: { maxWidth: 540, margin: "0 auto", background: PAPER, borderRadius: 24, padding: 26, boxShadow: "0 24px 70px rgba(5,15,40,.45)", position: "relative", border: `1px solid ${LINE}` },
+  bg: { minHeight: "100vh", background: `linear-gradient(165deg, #3A1A08 0%, ${INK} 45%, #0F0703 100%)`, fontFamily: BODY, padding: "28px 14px", boxSizing: "border-box" },
+  frame: { maxWidth: 540, margin: "0 auto", background: PAPER, borderRadius: 24, padding: 26, boxShadow: "0 24px 70px rgba(40,15,5,.45)", position: "relative", border: `1px solid ${LINE}` },
   loginWrap: { textAlign: "center", padding: "26px 8px" },
-  ball: { fontSize: 56, filter: "drop-shadow(0 8px 14px rgba(30,91,214,.3))" },
-  heroLogo: { width: 110, height: "auto", margin: "0 auto 4px", display: "block", filter: "drop-shadow(0 8px 14px rgba(30,91,214,.3))" },
+  heroLogo: { width: 110, height: "auto", margin: "0 auto 4px", display: "block", filter: "drop-shadow(0 8px 14px rgba(234,106,31,.3))" },
   loginTitle: { fontFamily: DISPLAY, fontWeight: 800, fontSize: 40, lineHeight: 1.02, letterSpacing: -1.2, margin: "14px 0 6px", color: INK },
   loginSub: { fontSize: 15.5, color: MUTE, marginBottom: 28, lineHeight: 1.5, fontWeight: 500 },
   bigInput: { width: "100%", boxSizing: "border-box", padding: "15px 18px", fontSize: 17, borderRadius: 14, border: `1.5px solid ${LINE}`, marginBottom: 12, fontFamily: BODY, fontWeight: 600, background: "#fff", color: INK, outline: "none" },
-  cta: { background: `linear-gradient(180deg, ${ACCENT} 0%, ${ACCENT_DARK} 100%)`, color: "#fff", border: "none", padding: "15px 24px", fontSize: 16, fontWeight: 700, borderRadius: 14, cursor: "pointer", fontFamily: BODY, letterSpacing: 0.2, boxShadow: "0 8px 20px rgba(30,91,214,.32)", width: "100%" },
+  cta: { background: `linear-gradient(180deg, ${ACCENT} 0%, ${ACCENT_DARK} 100%)`, color: "#fff", border: "none", padding: "15px 24px", fontSize: 16, fontWeight: 700, borderRadius: 14, cursor: "pointer", fontFamily: BODY, letterSpacing: 0.2, boxShadow: "0 8px 20px rgba(234,106,31,.32)", width: "100%" },
   switchMode: { background: "none", border: "none", color: ACCENT, fontSize: 13, fontWeight: 600, cursor: "pointer", marginTop: 18, fontFamily: BODY, textDecoration: "underline" },
   alertOk: { background: "#E7F6EE", color: "#1E7A47", padding: "12px 14px", borderRadius: 12, fontSize: 13, fontWeight: 600, marginTop: 14, textAlign: "left", lineHeight: 1.5 },
   alertErr: { background: "#FDECEC", color: "#B33", padding: "12px 14px", borderRadius: 12, fontSize: 13, fontWeight: 600, marginTop: 14, textAlign: "left", lineHeight: 1.5 },
@@ -813,11 +806,16 @@ const s = {
   logo: { fontFamily: DISPLAY, fontWeight: 800, fontSize: 16, letterSpacing: -0.4, color: INK, lineHeight: 1.2 },
   hello: { fontSize: 13.5, color: MUTE, marginTop: 3, fontWeight: 500 },
   headerStats: { display: "flex", flexDirection: "column", gap: 5, alignItems: "flex-end" },
-  statPill: { background: `linear-gradient(180deg, ${INK} 0%, #16294a 100%)`, color: GOLD, padding: "7px 15px", borderRadius: 22, fontSize: 14, fontWeight: 800, fontFamily: DISPLAY },
-  statPillGhost: { fontSize: 11.5, color: "#9AA4B6", fontWeight: 600 },
-  // Upcoming box
+  statPill: { background: `linear-gradient(180deg, ${INK} 0%, #3A1A08 100%)`, color: GOLD, padding: "7px 15px", borderRadius: 22, fontSize: 14, fontWeight: 800, fontFamily: DISPLAY },
+  statPillGhost: { fontSize: 11, color: ACCENT, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5 },
+  bonusBox: { background: `linear-gradient(180deg, #FFF2DF 0%, #FFE7C2 100%)`, border: `1.5px solid ${ACCENT}`, borderRadius: 18, padding: "14px 16px", marginBottom: 16, boxShadow: "0 4px 14px rgba(234,106,31,.18)" },
+  bonusContent: { display: "flex", alignItems: "flex-start", gap: 12 },
+  bonusEmoji: { fontSize: 32, lineHeight: 1 },
+  bonusTitle: { fontFamily: DISPLAY, fontWeight: 800, fontSize: 15, color: INK, marginBottom: 4 },
+  bonusText: { fontSize: 12.5, color: "#3A1A08", lineHeight: 1.5, fontWeight: 500 },
+  bonusClose: { background: "rgba(0,0,0,.06)", border: "none", borderRadius: 999, width: 26, height: 26, fontSize: 13, fontWeight: 700, color: MUTE, cursor: "pointer", flexShrink: 0 },
   upcomingBox: { background: `linear-gradient(180deg, #FFFEF5 0%, #FFFAEB 100%)`, border: `1.5px solid ${GOLD}`, borderRadius: 18, padding: "14px 16px", marginBottom: 20, boxShadow: "0 4px 14px rgba(233,185,73,.18)" },
-  upcomingEmpty: { background: "#F1F4F9", border: `1px solid ${LINE}`, borderRadius: 14, padding: "16px", marginBottom: 20, fontSize: 13, color: MUTE, textAlign: "center", fontWeight: 500 },
+  upcomingEmpty: { background: "#FAF5EE", border: `1px solid ${LINE}`, borderRadius: 14, padding: "16px", marginBottom: 20, fontSize: 13, color: MUTE, textAlign: "center", fontWeight: 500 },
   upcomingHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", fontFamily: DISPLAY, fontWeight: 800, fontSize: 14, color: INK, marginBottom: 12, letterSpacing: -0.2 },
   upcomingCount: { fontSize: 10.5, fontWeight: 700, color: "#9A7E2E", background: "rgba(233,185,73,.18)", padding: "3px 9px", borderRadius: 20, letterSpacing: 0.3, textTransform: "uppercase" },
   upcomingRow: { background: "#fff", border: `1px solid #F1DFA8`, borderRadius: 12, padding: "10px 12px", marginBottom: 8 },
@@ -827,34 +825,34 @@ const s = {
   upcomingMatch: { display: "flex", alignItems: "center", gap: 8 },
   upcomingTeam: { flex: 1, display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 700, color: INK },
   upcomingSaveBar: { display: "flex", alignItems: "center", gap: 12, marginTop: 12 },
-  upcomingSaveBtn: { background: `linear-gradient(180deg, ${INK} 0%, #16294a 100%)`, color: GOLD, border: "none", padding: "10px 16px", fontSize: 13, fontWeight: 700, borderRadius: 11, cursor: "pointer", fontFamily: BODY, flex: 1, boxShadow: "0 4px 12px rgba(11,26,51,.22)" },
-  tabs: { display: "flex", gap: 6, marginBottom: 20, background: "#EEF2F8", padding: 5, borderRadius: 14 },
+  upcomingSaveBtn: { background: `linear-gradient(180deg, ${INK} 0%, #3A1A08 100%)`, color: GOLD, border: "none", padding: "10px 16px", fontSize: 13, fontWeight: 700, borderRadius: 11, cursor: "pointer", fontFamily: BODY, flex: 1, boxShadow: "0 4px 12px rgba(40,15,5,.22)" },
+  tabRulesInfo: { display: "flex", alignItems: "flex-start", gap: 11, background: "#FFF4E0", border: `1px dashed ${ACCENT}`, borderRadius: 14, padding: "12px 14px", marginBottom: 20, fontSize: 12.5, color: "#3D2A18", lineHeight: 1.55, fontWeight: 500 },
+  tabRulesIcon: { fontSize: 20, lineHeight: 1, flexShrink: 0 },
+  tabs: { display: "flex", gap: 6, marginBottom: 20, background: "#FAF0E0", padding: 5, borderRadius: 14 },
   tab: { flex: 1, padding: "10px 4px", border: "none", background: "transparent", borderRadius: 10, fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: BODY, color: MUTE },
-  tabActive: { background: "#fff", color: INK, boxShadow: "0 2px 6px rgba(11,26,51,.1)" },
-  groupBar: { display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 18 },
-  groupChip: { minWidth: 36, height: 36, borderRadius: 10, border: `1.5px solid ${LINE}`, background: "#fff", fontWeight: 800, cursor: "pointer", fontFamily: DISPLAY, color: MUTE, fontSize: 14 },
-  groupChipActive: { background: `linear-gradient(180deg, ${ACCENT} 0%, ${ACCENT_DARK} 100%)`, color: "#fff", borderColor: ACCENT },
-  groupHeading: { fontFamily: DISPLAY, fontSize: 19, fontWeight: 800, color: INK, marginBottom: 14, display: "flex", flexDirection: "column", gap: 5, letterSpacing: -0.4 },
-  groupTeams: { fontFamily: BODY, fontSize: 12.5, fontWeight: 500, color: MUTE, lineHeight: 1.4 },
-  matchCard: { background: "#fff", border: `1px solid ${LINE}`, borderRadius: 16, padding: "14px 16px", marginBottom: 11, boxShadow: "0 2px 8px rgba(11,26,51,.05)" },
-  matchCardLocked: { background: "#F6F8FB", borderColor: "#E2E7F0", boxShadow: "none" },
-  lockTag: { fontSize: 10, color: "#9AA4B6", textTransform: "uppercase", letterSpacing: 0.6, fontWeight: 800 },
-  scoreInputLocked: { background: "#EEF1F6", color: "#AEB6C5", borderColor: "#E2E7F0", cursor: "not-allowed" },
+  tabActive: { background: "#fff", color: INK, boxShadow: "0 2px 6px rgba(40,15,5,.1)" },
+  bracketTitle: { fontFamily: DISPLAY, fontSize: 20, fontWeight: 800, color: INK, marginBottom: 6, letterSpacing: -0.4 },
+  bracketSub: { fontSize: 13, color: MUTE, fontWeight: 500, lineHeight: 1.5, marginBottom: 16 },
+  matchCard: { background: "#fff", border: `1px solid ${LINE}`, borderRadius: 16, padding: "14px 16px", marginBottom: 11, boxShadow: "0 2px 8px rgba(40,15,5,.05)" },
+  matchCardLocked: { background: "#FAF5EE", borderColor: "#E8DDC8", boxShadow: "none" },
+  lockTag: { fontSize: 10, color: MUTE, textTransform: "uppercase", letterSpacing: 0.6, fontWeight: 800 },
+  scoreInputLocked: { background: "#F5EEE0", color: "#B5A78F", borderColor: "#E8DDC8", cursor: "not-allowed" },
   koLine: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 11, paddingBottom: 9, borderBottom: `1px solid ${LINE}` },
   koDate: { fontSize: 12, fontWeight: 700, color: ACCENT, letterSpacing: 0.1 },
-  koTz: { fontSize: 10, color: "#9AA4B6", textTransform: "uppercase", letterSpacing: 0.6, fontWeight: 800 },
+  koTz: { fontSize: 10, color: MUTE, textTransform: "uppercase", letterSpacing: 0.6, fontWeight: 800 },
   channelLine: { display: "flex", gap: 6, marginBottom: 11, flexWrap: "wrap" },
   chanClear: { fontSize: 10.5, fontWeight: 800, color: "#1E9E5A", background: "#E7F6EE", borderRadius: 7, padding: "3px 8px" },
-  chanPay: { fontSize: 10.5, fontWeight: 800, color: ACCENT, background: "#EAF1FD", borderRadius: 7, padding: "3px 8px" },
-  venue: { fontSize: 10.5, fontWeight: 700, color: MUTE, background: "#F1F4F9", borderRadius: 7, padding: "3px 8px", marginLeft: "auto" },
+  chanPay: { fontSize: 10.5, fontWeight: 800, color: ACCENT, background: "#FDECDB", borderRadius: 7, padding: "3px 8px" },
+  venue: { fontSize: 10.5, fontWeight: 700, color: MUTE, background: "#F5EEE0", borderRadius: 7, padding: "3px 8px", marginLeft: "auto" },
   matchTeams: { display: "flex", alignItems: "center", gap: 8 },
   team: { flex: 1, display: "flex", alignItems: "center", gap: 7, fontSize: 14, fontWeight: 700, color: INK },
   flag: { fontSize: 21 },
   scoreInputs: { display: "flex", alignItems: "center", gap: 6 },
-  scoreInput: { width: 40, height: 44, textAlign: "center", fontSize: 19, fontWeight: 800, border: `1.5px solid ${LINE}`, borderRadius: 11, fontFamily: DISPLAY, color: INK, outline: "none", background: "#FBFCFE" },
-  vs: { fontWeight: 800, color: "#C2CAD8", fontSize: 14 },
+  scoreInput: { width: 40, height: 44, textAlign: "center", fontSize: 19, fontWeight: 800, border: `1.5px solid ${LINE}`, borderRadius: 11, fontFamily: DISPLAY, color: INK, outline: "none", background: "#FFFBF6" },
+  vs: { fontWeight: 800, color: "#C9B89C", fontSize: 14 },
   resultLine: { marginTop: 12, paddingTop: 10, borderTop: `1px solid ${LINE}`, fontSize: 12.5, color: MUTE, display: "flex", alignItems: "center", gap: 8, fontWeight: 600 },
   ptsBadge: { marginLeft: "auto", padding: "4px 11px", borderRadius: 20, fontWeight: 800, fontSize: 12.5, color: INK },
+  drawHint: { marginTop: 10, padding: "8px 12px", background: "#FFF4E0", borderRadius: 10, fontSize: 12, color: "#8A5A1A", fontWeight: 600 },
   saveBar: { display: "flex", alignItems: "center", gap: 14, marginTop: 20 },
   savedMsg: { color: "#1E9E5A", fontWeight: 700, fontSize: 14 },
   lbHeader: { display: "flex", alignItems: "center", gap: 8, padding: "8px 14px", marginBottom: 6, fontSize: 10, fontWeight: 800, color: MUTE, textTransform: "uppercase", letterSpacing: 0.6 },
@@ -863,39 +861,37 @@ const s = {
   lbColStat: { width: 50, textAlign: "center", flexShrink: 0, fontSize: 13.5, color: MUTE, fontWeight: 600 },
   lbColPts: { width: 56, textAlign: "right", flexShrink: 0 },
   lbStatVal: { fontFamily: DISPLAY, fontSize: 15, fontWeight: 700, color: INK },
-  lbRow: { display: "flex", alignItems: "center", gap: 8, background: "#fff", border: `1px solid ${LINE}`, borderRadius: 16, padding: "13px 14px", marginBottom: 8, boxShadow: "0 2px 8px rgba(11,26,51,.05)" },
+  lbRow: { display: "flex", alignItems: "center", gap: 8, background: "#fff", border: `1px solid ${LINE}`, borderRadius: 16, padding: "13px 14px", marginBottom: 8, boxShadow: "0 2px 8px rgba(40,15,5,.05)" },
   lbMe: { background: "linear-gradient(180deg, #FFFBEF 0%, #FFF7E1 100%)", borderColor: "#F1DFA8" },
   rank: { fontSize: 17, fontWeight: 800, fontFamily: DISPLAY, color: MUTE },
-  rankGold: { color: GOLD }, rankSilver: { color: "#A8B0C2" }, rankBronze: { color: "#C68B5E" },
+  rankGold: { color: GOLD }, rankSilver: { color: "#A8A0A8" }, rankBronze: { color: "#C68B5E" },
   lbName: { fontWeight: 700, fontSize: 14.5, color: INK, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" },
-  lbDetail: { fontSize: 11, color: "#9AA4B6", fontWeight: 500, marginTop: 1 },
+  lbDetail: { fontSize: 11, color: MUTE, fontWeight: 500, marginTop: 1 },
   lbPts: { fontFamily: DISPLAY, fontSize: 21, fontWeight: 800, color: ACCENT, letterSpacing: -0.5 },
   lbLegend: { fontSize: 11.5, color: MUTE, marginTop: 14, lineHeight: 1.5, fontWeight: 500, textAlign: "center" },
   adminLock: { textAlign: "center", padding: "30px 10px", fontSize: 14.5, color: MUTE, lineHeight: 1.5, fontWeight: 500 },
   adminHint: { fontSize: 13, color: MUTE, marginBottom: 18, lineHeight: 1.55, fontWeight: 500 },
-  adminGroupTitle: { fontFamily: DISPLAY, fontSize: 14, fontWeight: 800, marginBottom: 8, color: ACCENT, letterSpacing: 0.2 },
   adminRow: { display: "flex", alignItems: "center", gap: 7, padding: "6px 0", fontSize: 12.5 },
   adminTeam: { flex: 1, fontWeight: 600, color: INK },
-  scoreInputSm: { width: 34, height: 32, textAlign: "center", fontSize: 14, fontWeight: 700, border: `1.5px solid ${LINE}`, borderRadius: 8, fontFamily: DISPLAY, color: INK, outline: "none", background: "#FBFCFE" },
+  scoreInputSm: { width: 34, height: 32, textAlign: "center", fontSize: 14, fontWeight: 700, border: `1.5px solid ${LINE}`, borderRadius: 8, fontFamily: DISPLAY, color: INK, outline: "none", background: "#FFFBF6" },
   rulesWrap: { paddingBottom: 4 },
-  rulesIntro: { fontSize: 14, lineHeight: 1.6, color: "#3D4A5F", marginBottom: 22, background: "linear-gradient(180deg, #F4F8FF 0%, #EDF3FD 100%)", border: `1px solid ${LINE}`, borderRadius: 16, padding: "16px 18px", fontWeight: 500 },
+  rulesIntro: { fontSize: 14, lineHeight: 1.6, color: "#3D2A18", marginBottom: 22, background: "linear-gradient(180deg, #FFF8EE 0%, #FDECDB 100%)", border: `1px solid ${LINE}`, borderRadius: 16, padding: "16px 18px", fontWeight: 500 },
   rulesSectionTitle: { fontFamily: DISPLAY, fontWeight: 800, fontSize: 16, color: INK, margin: "20px 0 12px", letterSpacing: -0.3 },
-  ruleCard: { display: "flex", alignItems: "center", gap: 14, background: "#fff", border: `1px solid ${LINE}`, borderRadius: 16, padding: "13px 15px", marginBottom: 10, boxShadow: "0 2px 8px rgba(11,26,51,.05)" },
+  ruleCard: { display: "flex", alignItems: "center", gap: 14, background: "#fff", border: `1px solid ${LINE}`, borderRadius: 16, padding: "13px 15px", marginBottom: 10, boxShadow: "0 2px 8px rgba(40,15,5,.05)" },
   rulePts: { minWidth: 50, height: 50, borderRadius: 13, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, fontWeight: 800, color: INK, fontFamily: DISPLAY },
   ruleName: { fontWeight: 700, fontSize: 14.5, marginBottom: 3, color: INK },
   ruleDesc: { fontSize: 12.5, color: MUTE, lineHeight: 1.5, fontWeight: 500 },
-  rulesNote: { fontSize: 12.5, color: "#3D4A5F", background: "#EDF3FD", borderRadius: 13, padding: "13px 15px", marginTop: 14, lineHeight: 1.55, fontWeight: 500 },
-  logout: { display: "block", margin: "24px auto 0", background: "none", border: "none", color: "#9AA4B6", fontSize: 12.5, cursor: "pointer", fontWeight: 600, fontFamily: BODY, textDecoration: "underline" },
-  // Modal pronos d'un joueur
-  modalOverlay: { position: "fixed", inset: 0, background: "rgba(8,20,40,.65)", backdropFilter: "blur(4px)", zIndex: 1000, display: "flex", alignItems: "flex-end", justifyContent: "center", padding: "20px 12px" },
-  modalBox: { background: PAPER, borderRadius: 22, width: "100%", maxWidth: 540, maxHeight: "85vh", display: "flex", flexDirection: "column", boxShadow: "0 -10px 40px rgba(5,15,40,.5)", overflow: "hidden", border: `1px solid ${LINE}` },
+  rulesNote: { fontSize: 12.5, color: "#3D2A18", background: "#FDECDB", borderRadius: 13, padding: "13px 15px", marginTop: 14, lineHeight: 1.55, fontWeight: 500 },
+  logout: { display: "block", margin: "24px auto 0", background: "none", border: "none", color: MUTE, fontSize: 12.5, cursor: "pointer", fontWeight: 600, fontFamily: BODY, textDecoration: "underline" },
+  modalOverlay: { position: "fixed", inset: 0, background: "rgba(40,15,5,.65)", backdropFilter: "blur(4px)", zIndex: 1000, display: "flex", alignItems: "flex-end", justifyContent: "center", padding: "20px 12px" },
+  modalBox: { background: PAPER, borderRadius: 22, width: "100%", maxWidth: 540, maxHeight: "85vh", display: "flex", flexDirection: "column", boxShadow: "0 -10px 40px rgba(40,15,5,.5)", overflow: "hidden", border: `1px solid ${LINE}` },
   modalHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "18px 22px", borderBottom: `1px solid ${LINE}`, background: "#fff" },
   modalTitle: { fontFamily: DISPLAY, fontWeight: 800, fontSize: 19, color: INK, letterSpacing: -0.4 },
   modalSubtitle: { fontSize: 12, color: MUTE, fontWeight: 500, marginTop: 3 },
-  modalClose: { background: "#F1F4F9", border: "none", borderRadius: 999, width: 34, height: 34, fontSize: 15, fontWeight: 700, color: MUTE, cursor: "pointer" },
+  modalClose: { background: "#F5EEE0", border: "none", borderRadius: 999, width: 34, height: 34, fontSize: 15, fontWeight: 700, color: MUTE, cursor: "pointer" },
   modalBody: { overflow: "auto", padding: "18px 18px 22px", flex: 1 },
   modalEmpty: { textAlign: "center", color: MUTE, fontSize: 14, padding: "40px 20px", fontWeight: 500, lineHeight: 1.5 },
-  pronoCard: { background: "#fff", border: `1px solid ${LINE}`, borderRadius: 14, padding: "11px 13px", marginBottom: 9, boxShadow: "0 1px 3px rgba(11,26,51,.04)" },
+  pronoCard: { background: "#fff", border: `1px solid ${LINE}`, borderRadius: 14, padding: "11px 13px", marginBottom: 9, boxShadow: "0 1px 3px rgba(40,15,5,.04)" },
   pronoTop: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 7, fontSize: 11, fontWeight: 700 },
   pronoDate: { color: ACCENT },
   pronoGroup: { color: MUTE, fontSize: 10, textTransform: "uppercase", letterSpacing: 0.5 },
@@ -905,4 +901,5 @@ const s = {
   pronoFooter: { display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 9, paddingTop: 8, borderTop: `1px solid ${LINE}` },
   pronoActual: { fontSize: 11.5, color: MUTE, fontWeight: 600 },
   pronoPts: { padding: "3px 10px", borderRadius: 18, fontWeight: 800, fontSize: 11.5, color: INK },
+  tabChoice: { display: "flex", alignItems: "center", gap: 14, width: "100%", padding: "14px 16px", border: `1.5px solid ${LINE}`, borderRadius: 14, background: "#fff", fontSize: 15, fontWeight: 700, color: INK, marginBottom: 10, cursor: "pointer", fontFamily: BODY, textAlign: "left" },
 };
