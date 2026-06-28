@@ -67,6 +67,14 @@ const FIXED_RESULTS = Object.fromEntries(
   MATCHES.filter((m) => m.resultFixed).map((m) => [m.id, m.resultFixed])
 );
 
+// ============================================================================
+// HISTORIQUE PHASE DE POULES — IDs M1 à M72 (72 matchs)
+// On ne réaffiche pas ces matchs dans l'interface, mais leurs pronos
+// et résultats stockés en base servent à recalculer les anciens points
+// de chaque joueur (afin de conserver son score du tour précédent).
+// ============================================================================
+const LEGACY_MATCH_IDS = Array.from({ length: 72 }, (_, i) => `M${i + 1}`);
+
 const M6_MATCHES = new Set(["R16-1", "R16-2", "R16-3", "R16-6"]);
 function channelsFor(id) {
   return M6_MATCHES.has(id) ? ["M6", "beIN Sports"] : ["beIN Sports"];
@@ -342,12 +350,14 @@ function Game({ session, profile }) {
       byUser[key][p.match_id] = { h: p.home_score, a: p.away_score };
     });
     const allUserIds = new Set([...Object.keys(byUser), ...Object.keys(profiles)]);
+    // Tous les IDs à scorer : 72 poules + 16es de finale
+    const allMatchIds = [...LEGACY_MATCH_IDS, ...MATCHES.map((m) => m.id)];
     const rows = Array.from(allUserIds).map((uid) => {
       let pts = BONUS_POINTS;
       let exact = 0, good = 0, played = 0;
-      MATCHES.forEach((m) => {
-        const userPred = byUser[uid]?.[m.id];
-        const matchRes = results[m.id];
+      allMatchIds.forEach((mid) => {
+        const userPred = byUser[uid]?.[mid];
+        const matchRes = results[mid];
         const hasPred = userPred && userPred.h != null && userPred.a != null;
         const hasResult = matchRes && matchRes.h != null && matchRes.a != null;
         if (hasPred && hasResult) {
@@ -712,6 +722,18 @@ function PlayerPronosModal({ uid, pseudo, isMe, allPredictions, results, onClose
     }
   });
 
+  // Calcul des points des anciens matchs de poules (sans les afficher en détail)
+  let legacyPts = 0;
+  let legacyPlayed = 0;
+  LEGACY_MATCH_IDS.forEach((mid) => {
+    const pred = userPreds[mid];
+    const res = results[mid];
+    if (pred && pred.h != null && pred.a != null && res && res.h != null && res.a != null) {
+      legacyPts += scorePrediction(pred, res);
+      legacyPlayed++;
+    }
+  });
+
   const rows = MATCHES
     .filter((m) => {
       const pred = userPreds[m.id];
@@ -728,7 +750,8 @@ function PlayerPronosModal({ uid, pseudo, isMe, allPredictions, results, onClose
     })
     .sort((a, b) => new Date(b.match.kickoff).getTime() - new Date(a.match.kickoff).getTime());
 
-  const totalPts = rows.reduce((sum, r) => sum + r.pts, 0);
+  const r16Pts = rows.reduce((sum, r) => sum + r.pts, 0);
+  const totalPts = legacyPts + r16Pts;
 
   return (
     <div style={s.modalOverlay} onClick={onClose}>
@@ -736,13 +759,22 @@ function PlayerPronosModal({ uid, pseudo, isMe, allPredictions, results, onClose
         <div style={s.modalHeader}>
           <div>
             <div style={s.modalTitle}>{pseudo}{isMe && " (toi)"}</div>
-            <div style={s.modalSubtitle}>{rows.length} prono{rows.length > 1 ? "s" : ""} sur matchs terminés · {totalPts} pts (hors bonus)</div>
+            <div style={s.modalSubtitle}>{totalPts} pts · {legacyPlayed} matchs en poules · {rows.length} en 16es</div>
           </div>
           <button style={s.modalClose} onClick={onClose}>✕</button>
         </div>
         <div style={s.modalBody}>
+          {legacyPts > 0 && (
+            <div style={s.legacySummary}>
+              <span style={{ fontSize: 18 }}>🏆</span>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 13, color: INK }}>Phase de poules</div>
+                <div style={{ fontSize: 11.5, color: MUTE, marginTop: 1 }}>{legacyPlayed} match{legacyPlayed > 1 ? "s" : ""} joué{legacyPlayed > 1 ? "s" : ""} · {legacyPts} pts cumulés</div>
+              </div>
+            </div>
+          )}
           {rows.length === 0 ? (
-            <p style={s.modalEmpty}>Aucun prono à afficher pour l'instant. Reviens après quelques matchs joués !</p>
+            <p style={s.modalEmpty}>Aucun prono de 16e à afficher pour l'instant.</p>
           ) : (
             rows.map(({ match: m, pred, res, pts }) => {
               const ko = formatKickoff(m.kickoff);
@@ -901,5 +933,6 @@ const s = {
   pronoFooter: { display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 9, paddingTop: 8, borderTop: `1px solid ${LINE}` },
   pronoActual: { fontSize: 11.5, color: MUTE, fontWeight: 600 },
   pronoPts: { padding: "3px 10px", borderRadius: 18, fontWeight: 800, fontSize: 11.5, color: INK },
+  legacySummary: { display: "flex", alignItems: "center", gap: 12, background: "linear-gradient(180deg, #FFF4E0 0%, #FDECDB 100%)", border: `1px dashed ${ACCENT}`, borderRadius: 12, padding: "11px 13px", marginBottom: 14 },
   tabChoice: { display: "flex", alignItems: "center", gap: 14, width: "100%", padding: "14px 16px", border: `1.5px solid ${LINE}`, borderRadius: 14, background: "#fff", fontSize: 15, fontWeight: 700, color: INK, marginBottom: 10, cursor: "pointer", fontFamily: BODY, textAlign: "left" },
 };
