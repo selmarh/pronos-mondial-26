@@ -94,12 +94,26 @@ function formatKickoff(iso) {
 }
 
 // ============================================================================
-// SCORING — 10 score exact / 5 bon vainqueur / 3 bonne différence
+// SCORING — 10 score exact (+TAB si nul) / 5 bon vainqueur / 3 bonne différence
 // ============================================================================
+// pred = { h, a, tabWinner? }    actual = { h, a, tabWinner? }
 function scorePrediction(pred, actual) {
   if (!actual || actual.h == null || actual.a == null) return null;
   if (!pred || pred.h == null || pred.a == null) return 0;
   const ph = +pred.h, pa = +pred.a, ah = +actual.h, aa = +actual.a;
+  const actualIsDraw = ah === aa;
+  const predIsDraw = ph === pa;
+
+  // Cas spécial : le match réel a fini sur un nul (=> TAB)
+  if (actualIsDraw) {
+    const sameTabWinner = pred.tabWinner && actual.tabWinner && pred.tabWinner === actual.tabWinner;
+    if (predIsDraw && ph === ah && sameTabWinner) return 10; // score nul exact + bon vainqueur TAB
+    if (sameTabWinner) return 5;                              // bon vainqueur TAB sans le score exact
+    if (predIsDraw && ph - pa === ah - aa) return 3;          // bon score nul, mauvais TAB → seule la diff de buts compte
+    return 0;
+  }
+
+  // Cas normal : match avec un vrai vainqueur (pas de TAB)
   if (ph === ah && pa === aa) return 10;
   const sign = (x) => (x > 0 ? 1 : x < 0 ? -1 : 0);
   const predRes = sign(ph - pa), actRes = sign(ah - aa);
@@ -271,14 +285,16 @@ function Game({ session, profile }) {
     ]);
     setAllPredictions(preds.data || []);
     const resMap = { ...FIXED_RESULTS };
-    (res.data || []).forEach((r) => { resMap[r.match_id] = { h: r.home_score, a: r.away_score }; });
+    (res.data || []).forEach((r) => {
+      resMap[r.match_id] = { h: r.home_score, a: r.away_score, tabWinner: r.tab_winner || null };
+    });
     setResults(resMap);
     const profMap = {};
     (profs.data || []).forEach((p) => { profMap[p.id] = p.pseudo; });
     setProfiles(profMap);
     const mine = {};
     (preds.data || []).filter((p) => p.user_id === userId).forEach((p) => {
-      mine[p.match_id] = { h: p.home_score, a: p.away_score };
+      mine[p.match_id] = { h: p.home_score, a: p.away_score, tabWinner: p.tab_winner || null };
     });
     setMyPreds(mine);
   }
@@ -345,6 +361,7 @@ function Game({ session, profile }) {
       .map(([match_id, v]) => ({
         user_id: userId, match_id,
         home_score: v.h, away_score: v.a,
+        tab_winner: v.tabWinner || null,
       }));
     if (rows.length === 0) return;
     const { error } = await supabase.from("predictions").upsert(rows);
@@ -366,7 +383,9 @@ function Game({ session, profile }) {
     ]);
     setAllPredictions(preds.data || []);
     const resMap = { ...FIXED_RESULTS };
-    (res.data || []).forEach((r) => { resMap[r.match_id] = { h: r.home_score, a: r.away_score }; });
+    (res.data || []).forEach((r) => {
+      resMap[r.match_id] = { h: r.home_score, a: r.away_score, tabWinner: r.tab_winner || null };
+    });
     setResults(resMap);
   }
 
@@ -381,10 +400,18 @@ function Game({ session, profile }) {
     setResults((r) => ({ ...r, [matchId]: { ...(r[matchId] || {}), [side]: clean } }));
   }
 
+  function setResultTabWinner(matchId, winner) {
+    if (FIXED_RESULTS[matchId]) return;
+    setResults((r) => ({ ...r, [matchId]: { ...(r[matchId] || {}), tabWinner: winner } }));
+  }
+
   async function saveResults() {
     const rows = Object.entries(results)
       .filter(([mid, v]) => !FIXED_RESULTS[mid] && (v.h != null || v.a != null))
-      .map(([match_id, v]) => ({ match_id, home_score: v.h, away_score: v.a }));
+      .map(([match_id, v]) => ({
+        match_id, home_score: v.h, away_score: v.a,
+        tab_winner: v.tabWinner || null,
+      }));
     if (rows.length === 0) return;
     const { error } = await supabase.from("results").upsert(rows);
     if (!error) {
@@ -646,15 +673,35 @@ function Game({ session, profile }) {
               {MATCHES.map((m) => {
                 const res = results[m.id] || {};
                 const isFixed = !!FIXED_RESULTS[m.id];
+                const isDraw = res.h != null && res.a != null && res.h === res.a && !isFixed;
                 return (
-                  <div key={m.id} style={s.adminRow}>
-                    <span style={s.adminTeam}>{flag(m.home)} {m.home}</span>
-                    <input type="number" min="0" max="20" value={res.h ?? ""} disabled={isFixed}
-                      onChange={(e) => setResult(m.id, "h", e.target.value)} style={s.scoreInputSm} />
-                    <span style={{ opacity: 0.4 }}>—</span>
-                    <input type="number" min="0" max="20" value={res.a ?? ""} disabled={isFixed}
-                      onChange={(e) => setResult(m.id, "a", e.target.value)} style={s.scoreInputSm} />
-                    <span style={{ ...s.adminTeam, textAlign: "right" }}>{m.away} {flag(m.away)}</span>
+                  <div key={m.id} style={s.adminBlock}>
+                    <div style={s.adminRow}>
+                      <span style={s.adminTeam}>{flag(m.home)} {m.home}</span>
+                      <input type="number" min="0" max="20" value={res.h ?? ""} disabled={isFixed}
+                        onChange={(e) => setResult(m.id, "h", e.target.value)} style={s.scoreInputSm} />
+                      <span style={{ opacity: 0.4 }}>—</span>
+                      <input type="number" min="0" max="20" value={res.a ?? ""} disabled={isFixed}
+                        onChange={(e) => setResult(m.id, "a", e.target.value)} style={s.scoreInputSm} />
+                      <span style={{ ...s.adminTeam, textAlign: "right" }}>{m.away} {flag(m.away)}</span>
+                    </div>
+                    {isDraw && (
+                      <div style={s.adminTabBlock}>
+                        <div style={s.adminTabLabel}>⚽ Vainqueur aux tirs au but :</div>
+                        <div style={s.adminTabBtns}>
+                          <button
+                            style={{ ...s.adminTabBtn, ...(res.tabWinner === m.home ? s.adminTabBtnActive : {}) }}
+                            onClick={() => setResultTabWinner(m.id, m.home)}>
+                            {flag(m.home)} {m.home}
+                          </button>
+                          <button
+                            style={{ ...s.adminTabBtn, ...(res.tabWinner === m.away ? s.adminTabBtnActive : {}) }}
+                            onClick={() => setResultTabWinner(m.id, m.away)}>
+                            {flag(m.away)} {m.away}
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -959,6 +1006,12 @@ const s = {
   adminLock: { textAlign: "center", padding: "30px 10px", fontSize: 14.5, color: MUTE, lineHeight: 1.5, fontWeight: 500 },
   adminHint: { fontSize: 13, color: MUTE, marginBottom: 18, lineHeight: 1.55, fontWeight: 500 },
   adminRow: { display: "flex", alignItems: "center", gap: 7, padding: "6px 0", fontSize: 12.5 },
+  adminBlock: { padding: "6px 0", borderBottom: `1px solid ${LINE}`, marginBottom: 4 },
+  adminTabBlock: { background: "#FFF4E0", borderRadius: 10, padding: "10px 12px", marginTop: 8, marginBottom: 6 },
+  adminTabLabel: { fontSize: 11.5, fontWeight: 700, color: "#8A5A1A", marginBottom: 7 },
+  adminTabBtns: { display: "flex", gap: 6 },
+  adminTabBtn: { flex: 1, padding: "8px 10px", border: `1.5px solid #F1DFA8`, borderRadius: 9, background: "#fff", fontSize: 12, fontWeight: 600, color: INK, cursor: "pointer", fontFamily: BODY, textAlign: "center" },
+  adminTabBtnActive: { background: `linear-gradient(180deg, ${ACCENT} 0%, ${ACCENT_DARK} 100%)`, color: "#fff", borderColor: ACCENT },
   adminTeam: { flex: 1, fontWeight: 600, color: INK },
   scoreInputSm: { width: 34, height: 32, textAlign: "center", fontSize: 14, fontWeight: 700, border: `1.5px solid ${LINE}`, borderRadius: 8, fontFamily: DISPLAY, color: INK, outline: "none", background: "#FFFBF6" },
   rulesWrap: { paddingBottom: 4 },
