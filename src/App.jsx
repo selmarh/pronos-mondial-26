@@ -34,30 +34,22 @@ const FLAGS = {
 const flag = (t) => FLAGS[t] || "⚽";
 
 // ============================================================================
-// BRACKET — Les 16 matchs des seizièmes (officiel FIFA, horaires France)
+// BRACKET — Les 8 matchs des huitièmes de finale (officiel FIFA, horaires France)
 // ============================================================================
-const BRACKET_R16 = [
-  ["R16-1",  "Afrique du Sud", "Canada",            "2026-06-28T21:00", "Los Angeles 🇺🇸", { h: 0, a: 1 }],
-  ["R16-2",  "Brésil",         "Japon",             "2026-06-29T19:00", "Houston 🇺🇸"],
-  ["R16-3",  "Allemagne",      "Paraguay",          "2026-06-29T22:30", "Boston 🇺🇸"],
-  ["R16-4",  "Pays-Bas",       "Maroc",             "2026-06-30T03:00", "Monterrey 🇲🇽"],
-  ["R16-5",  "Côte d'Ivoire",  "Norvège",           "2026-06-30T19:00", "Dallas 🇺🇸"],
-  ["R16-6",  "France",         "Suède",             "2026-06-30T23:00", "New York 🇺🇸"],
-  ["R16-7",  "Mexique",        "Équateur",          "2026-07-01T03:00", "Mexico 🇲🇽"],
-  ["R16-8",  "Angleterre",     "RD Congo",          "2026-07-01T18:00", "Atlanta 🇺🇸"],
-  ["R16-9",  "Belgique",       "Sénégal",           "2026-07-01T22:00", "Seattle 🇺🇸"],
-  ["R16-10", "États-Unis",     "Bosnie-Herzégovine","2026-07-02T02:00", "San Francisco 🇺🇸"],
-  ["R16-11", "Espagne",        "Autriche",          "2026-07-02T21:00", "Los Angeles 🇺🇸"],
-  ["R16-12", "Portugal",       "Croatie",           "2026-07-03T01:00", "Toronto 🇨🇦"],
-  ["R16-13", "Suisse",         "Algérie",           "2026-07-03T05:00", "Vancouver 🇨🇦"],
-  ["R16-14", "Australie",      "Égypte",            "2026-07-03T20:00", "Dallas 🇺🇸"],
-  ["R16-15", "Argentine",      "Cap-Vert",          "2026-07-04T00:00", "Miami 🇺🇸"],
-  ["R16-16", "Colombie",       "Ghana",             "2026-07-04T03:30", "Kansas City 🇺🇸"],
+const BRACKET_R8 = [
+  ["R8-1",  "Canada",       "Maroc",     "2026-07-04T19:00", "Houston 🇺🇸"],
+  ["R8-2",  "Paraguay",     "France",    "2026-07-04T23:00", "Philadelphie 🇺🇸"],
+  ["R8-3",  "Brésil",       "Norvège",   "2026-07-05T22:00", "New York 🇺🇸"],
+  ["R8-4",  "Mexique",      "Angleterre","2026-07-06T02:00", "Mexico 🇲🇽"],
+  ["R8-5",  "Portugal",     "Espagne",   "2026-07-06T21:00", "Dallas 🇺🇸"],
+  ["R8-6",  "États-Unis",   "Belgique",  "2026-07-07T02:00", "Seattle 🇺🇸"],
+  ["R8-7",  "Argentine",    "Égypte",    "2026-07-07T18:00", "Atlanta 🇺🇸"],
+  ["R8-8",  "Suisse",       "Colombie",  "2026-07-07T22:00", "Vancouver 🇨🇦"],
 ];
 
 function buildMatches() {
-  return BRACKET_R16.map(([id, home, away, kickoff, venue, resultFixed]) => ({
-    id, round: "16es", home, away, kickoff, venue,
+  return BRACKET_R8.map(([id, home, away, kickoff, venue, resultFixed]) => ({
+    id, round: "8es", home, away, kickoff, venue,
     resultFixed: resultFixed || null,
   }));
 }
@@ -68,14 +60,15 @@ const FIXED_RESULTS = Object.fromEntries(
 );
 
 // ============================================================================
-// HISTORIQUE PHASE DE POULES — IDs M1 à M72 (72 matchs)
-// On ne réaffiche pas ces matchs dans l'interface, mais leurs pronos
-// et résultats stockés en base servent à recalculer les anciens points
-// de chaque joueur (afin de conserver son score du tour précédent).
+// HISTORIQUE — matchs des tours précédents dont on garde les points
+// (poules M1-M72 + seizièmes R16-1 à R16-16)
 // ============================================================================
-const LEGACY_MATCH_IDS = Array.from({ length: 72 }, (_, i) => `M${i + 1}`);
+const LEGACY_POULES_IDS = Array.from({ length: 72 }, (_, i) => `M${i + 1}`);
+const LEGACY_R16_IDS = Array.from({ length: 16 }, (_, i) => `R16-${i + 1}`);
+const LEGACY_MATCH_IDS = [...LEGACY_POULES_IDS, ...LEGACY_R16_IDS];
 
-const M6_MATCHES = new Set(["R16-1", "R16-2", "R16-3", "R16-6"]);
+// Matchs diffusés en clair sur M6 (à confirmer avec la grille officielle)
+const M6_MATCHES = new Set(["R8-1", "R8-2", "R8-5"]);
 function channelsFor(id) {
   return M6_MATCHES.has(id) ? ["M6", "beIN Sports"] : ["beIN Sports"];
 }
@@ -299,8 +292,8 @@ function Game({ session, profile }) {
     setMyPreds(mine);
   }
 
-  // Set des IDs valides pour les pronos (uniquement les 16es de finale)
-  const R16_IDS = useMemo(() => new Set(MATCHES.map((m) => m.id)), []);
+  // Set des IDs valides pour les pronos (uniquement les matchs du tour en cours : 8es)
+  const CURRENT_MATCH_IDS = useMemo(() => new Set(MATCHES.map((m) => m.id)), []);
 
   function setPred(matchId, side, val) {
     const ko = KICKOFF_BY_ID[matchId];
@@ -320,7 +313,7 @@ function Game({ session, profile }) {
       if (v.h == null || v.a == null) return false;
       if (v.h !== v.a) return false;
       if (v.tabWinner) return false;
-      if (!R16_IDS.has(mid)) return false; // uniquement les matchs des 16es
+      if (!CURRENT_MATCH_IDS.has(mid)) return false; // uniquement les matchs du tour en cours
       const ko = KICKOFF_BY_ID[mid];
       if (ko && Date.now() >= new Date(ko).getTime()) return false;
       return true;
@@ -357,7 +350,7 @@ function Game({ session, profile }) {
     // On ne sauvegarde QUE les pronos sur des matchs valides (16es de finale)
     // et qui ont au moins un score renseigné
     const rows = Object.entries(myPreds)
-      .filter(([mid, v]) => R16_IDS.has(mid) && (v.h != null || v.a != null))
+      .filter(([mid, v]) => CURRENT_MATCH_IDS.has(mid) && (v.h != null || v.a != null))
       .map(([match_id, v]) => ({
         user_id: userId, match_id,
         home_score: v.h, away_score: v.a,
@@ -480,7 +473,7 @@ function Game({ session, profile }) {
         </div>
         <div style={s.headerStats}>
           <div style={s.statPill}><b>{myScore}</b> pts</div>
-          <div style={s.statPillGhost}>16es de finale</div>
+          <div style={s.statPillGhost}>8es de finale</div>
         </div>
       </div>
 
@@ -527,8 +520,8 @@ function Game({ session, profile }) {
 
       {tab === "matchs" && (
         <>
-          <div style={s.bracketTitle}>🏆 Seizièmes de finale</div>
-          <p style={s.bracketSub}>16 matchs à élimination directe. Devine le score, et si tu pronostiques un nul, indique aussi qui passe aux tirs au but.</p>
+          <div style={s.bracketTitle}>🏆 Huitièmes de finale</div>
+          <p style={s.bracketSub}>8 matchs à élimination directe. Devine le score, et si tu pronostiques un nul, indique aussi qui passe aux tirs au but.</p>
           {MATCHES.map((m) => {
             const p = myPreds[m.id] || {};
             const res = results[m.id];
@@ -623,7 +616,7 @@ function Game({ session, profile }) {
       {tab === "regles" && (
         <div style={s.rulesWrap}>
           <p style={s.rulesIntro}>
-            🏆 On entre dans la phase à élimination directe ! 16 matchs aux seizièmes, puis 8es, quarts, demi et finale. Devine les scores, marque des points, vise le podium.
+            🏆 On est en huitièmes de finale ! 8 matchs à élimination directe, puis quarts, demi et finale. Devine les scores, marque des points, vise le podium.
           </p>
           <div style={s.rulesSectionTitle}>Comment marquer des points</div>
           <div style={s.ruleCard}>
@@ -759,7 +752,7 @@ function UpcomingBox({ matches, myPreds, setPred, onSave, saved }) {
           <div key={m.id} style={s.upcomingRow}>
             <div style={s.upcomingTop}>
               <span style={s.upcomingDate}>{ko ? `${ko.long.slice(0, 3)}. ${ko.long.split(" ").slice(1).join(" ")} · ${ko.time}` : ""}</span>
-              <span style={s.upcomingGroup}>16es</span>
+              <span style={s.upcomingGroup}>8es</span>
             </div>
             <div style={s.upcomingMatch}>
               <span style={s.upcomingTeam}><span style={s.flag}>{flag(m.home)}</span>{m.home}</span>
@@ -822,15 +815,23 @@ function PlayerPronosModal({ uid, pseudo, isMe, allPredictions, results, onClose
     }
   });
 
-  // Calcul des points des anciens matchs de poules (sans les afficher en détail)
-  let legacyPts = 0;
-  let legacyPlayed = 0;
-  LEGACY_MATCH_IDS.forEach((mid) => {
+  // Calcul des points par tour (poules + 16es + 8es en cours)
+  let poulesPts = 0, poulesPlayed = 0;
+  LEGACY_POULES_IDS.forEach((mid) => {
     const pred = userPreds[mid];
     const res = results[mid];
     if (pred && pred.h != null && pred.a != null && res && res.h != null && res.a != null) {
-      legacyPts += scorePrediction(pred, res);
-      legacyPlayed++;
+      poulesPts += scorePrediction(pred, res);
+      poulesPlayed++;
+    }
+  });
+  let r16Pts_historic = 0, r16Played = 0;
+  LEGACY_R16_IDS.forEach((mid) => {
+    const pred = userPreds[mid];
+    const res = results[mid];
+    if (pred && pred.h != null && pred.a != null && res && res.h != null && res.a != null) {
+      r16Pts_historic += scorePrediction(pred, res);
+      r16Played++;
     }
   });
 
@@ -850,8 +851,8 @@ function PlayerPronosModal({ uid, pseudo, isMe, allPredictions, results, onClose
     })
     .sort((a, b) => new Date(b.match.kickoff).getTime() - new Date(a.match.kickoff).getTime());
 
-  const r16Pts = rows.reduce((sum, r) => sum + r.pts, 0);
-  const totalPts = legacyPts + r16Pts;
+  const r8Pts = rows.reduce((sum, r) => sum + r.pts, 0);
+  const totalPts = poulesPts + r16Pts_historic + r8Pts;
 
   return (
     <div style={s.modalOverlay} onClick={onClose}>
@@ -859,22 +860,31 @@ function PlayerPronosModal({ uid, pseudo, isMe, allPredictions, results, onClose
         <div style={s.modalHeader}>
           <div>
             <div style={s.modalTitle}>{pseudo}{isMe && " (toi)"}</div>
-            <div style={s.modalSubtitle}>{totalPts} pts · {legacyPlayed} matchs en poules · {rows.length} en 16es</div>
+            <div style={s.modalSubtitle}>{totalPts} pts au total · {poulesPlayed + r16Played + rows.length} matchs joués</div>
           </div>
           <button style={s.modalClose} onClick={onClose}>✕</button>
         </div>
         <div style={s.modalBody}>
-          {legacyPts > 0 && (
+          {poulesPts > 0 && (
             <div style={s.legacySummary}>
               <span style={{ fontSize: 18 }}>🏆</span>
               <div>
                 <div style={{ fontWeight: 700, fontSize: 13, color: INK }}>Phase de poules</div>
-                <div style={{ fontSize: 11.5, color: MUTE, marginTop: 1 }}>{legacyPlayed} match{legacyPlayed > 1 ? "s" : ""} joué{legacyPlayed > 1 ? "s" : ""} · {legacyPts} pts cumulés</div>
+                <div style={{ fontSize: 11.5, color: MUTE, marginTop: 1 }}>{poulesPlayed} match{poulesPlayed > 1 ? "s" : ""} · {poulesPts} pts cumulés</div>
+              </div>
+            </div>
+          )}
+          {r16Pts_historic > 0 && (
+            <div style={s.legacySummary}>
+              <span style={{ fontSize: 18 }}>⚽</span>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 13, color: INK }}>Seizièmes de finale</div>
+                <div style={{ fontSize: 11.5, color: MUTE, marginTop: 1 }}>{r16Played} match{r16Played > 1 ? "s" : ""} · {r16Pts_historic} pts cumulés</div>
               </div>
             </div>
           )}
           {rows.length === 0 ? (
-            <p style={s.modalEmpty}>Aucun prono de 16e à afficher pour l'instant.</p>
+            <p style={s.modalEmpty}>Aucun prono de 8e à afficher pour l'instant.</p>
           ) : (
             rows.map(({ match: m, pred, res, pts }) => {
               const ko = formatKickoff(m.kickoff);
@@ -882,7 +892,7 @@ function PlayerPronosModal({ uid, pseudo, isMe, allPredictions, results, onClose
                 <div key={m.id} style={s.pronoCard}>
                   <div style={s.pronoTop}>
                     <span style={s.pronoDate}>{ko ? `${ko.long.slice(0, 3)}. ${ko.long.split(" ").slice(1).join(" ")}` : ""}</span>
-                    <span style={s.pronoGroup}>16es</span>
+                    <span style={s.pronoGroup}>8es</span>
                   </div>
                   <div style={s.pronoRow}>
                     <span style={s.pronoTeam}><span style={s.flag}>{flag(m.home)}</span>{m.home}</span>
