@@ -121,10 +121,10 @@ function formatKickoff(iso) {
 }
 
 // ============================================================================
-// SCORING — score exact +70 en quart (+10 sinon) / +5 bon vainqueur / +3 bonne différence
+// SCORING — score exact +100 en quart (+10 sinon) / +5 bon vainqueur / +3 bonne différence
 // ============================================================================
 // pred = { h, a, tabWinner? }    actual = { h, a, tabWinner? }    matchId = "QF-1" | "R8-3" | "M42" | ...
-// Barème : score exact = +70 pts pour les quarts / +10 pour les autres tours. Bon vainqueur +5, bonne diff +3.
+// Barème : score exact = +100 pts pour les quarts / +10 pour les autres tours. Bon vainqueur +5, bonne diff +3.
 function scorePrediction(pred, actual, matchId) {
   if (!actual || actual.h == null || actual.a == null) return null;
   if (!pred || pred.h == null || pred.a == null) return 0;
@@ -132,7 +132,7 @@ function scorePrediction(pred, actual, matchId) {
   const actualIsDraw = ah === aa;
   const predIsDraw = ph === pa;
   const isQuarterFinal = typeof matchId === "string" && matchId.startsWith("QF-");
-  const EXACT_PTS = isQuarterFinal ? 70 : 10;
+  const EXACT_PTS = isQuarterFinal ? 100 : 10;
 
   // Cas spécial : le match réel a fini sur un nul (=> TAB)
   if (actualIsDraw) {
@@ -475,7 +475,7 @@ function Game({ session, profile }) {
           const sc = scorePrediction(userPred, matchRes, mid);
           played++;
           pts += sc;
-          if (sc === 70 || sc === 10) exact++; else if (sc >= 3) good++;
+          if (sc === 100 || sc === 10) exact++; else if (sc >= 3) good++;
         }
       });
       return { uid, pseudo: profiles[uid] || "?", pts, exact, good, played };
@@ -519,7 +519,7 @@ function Game({ session, profile }) {
           <span style={s.decisiveEmoji}>🔥</span>
           <div style={{ flex: 1 }}>
             <div style={s.decisiveTitle}>Ça devient sérieux !</div>
-            <div style={s.decisiveText}>À partir des quarts, un <b>score exact</b> rapporte <b>+70 pts</b>. Bon vainqueur = +5, bonne différence = +3. Chaque prono peut tout changer.</div>
+            <div style={s.decisiveText}>À partir des quarts, un <b>score exact</b> rapporte <b>+100 pts</b>. Bon vainqueur = +5, bonne différence = +3. Chaque prono peut tout changer.</div>
           </div>
         </div>
       </div>
@@ -653,7 +653,7 @@ function Game({ session, profile }) {
                 </div>
               ))}
               <p style={s.lbLegend}>
-                <b>Exact</b> = score exact (+70 pts en quart, +10 avant) · <b>Bon</b> = bon vainqueur (+5) ou bonne différence (+3) · <b>+{BONUS_POINTS} pts</b> de bonus inclus pour tous
+                <b>Exact</b> = score exact (+100 pts en quart, +10 avant) · <b>Bon</b> = bon vainqueur (+5) ou bonne différence (+3) · <b>+{BONUS_POINTS} pts</b> de bonus inclus pour tous
               </p>
             </>
           )}
@@ -667,10 +667,10 @@ function Game({ session, profile }) {
           </p>
           <div style={s.rulesSectionTitle}>Comment marquer des points</div>
           <div style={s.ruleCard}>
-            <div style={{ ...s.rulePts, background: GOLD, fontSize: 14 }}>+70</div>
+            <div style={{ ...s.rulePts, background: GOLD, fontSize: 13 }}>+100</div>
             <div>
               <div style={s.ruleName}>Score exact ⚡</div>
-              <div style={s.ruleDesc}>À partir des quarts, un score exact rapporte <b>70 points</b> (au lieu de 10 avant). Tu trouves le score final pile poil, ex : 2–1 et c'est 2–1.</div>
+              <div style={s.ruleDesc}>À partir des quarts, un score exact rapporte <b>100 points</b> (au lieu de 10 avant). Tu trouves le score final pile poil, ex : 2–1 et c'est 2–1.</div>
             </div>
           </div>
           <div style={s.ruleCard}>
