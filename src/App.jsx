@@ -161,6 +161,37 @@ export default function App() {
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  // Injection unique de l'animation "néon pulse" pour l'encadré 24h
+  useEffect(() => {
+    if (document.getElementById("neon-pulse-anim")) return;
+    const style = document.createElement("style");
+    style.id = "neon-pulse-anim";
+    style.textContent = `
+      @keyframes neonPulse {
+        0%, 100% {
+          box-shadow:
+            0 0 8px rgba(234, 106, 31, 0.5),
+            0 0 16px rgba(234, 106, 31, 0.35),
+            0 0 24px rgba(220, 40, 20, 0.2),
+            inset 0 0 8px rgba(234, 106, 31, 0.15);
+          border-color: rgba(234, 106, 31, 0.9);
+        }
+        50% {
+          box-shadow:
+            0 0 14px rgba(255, 100, 0, 0.85),
+            0 0 28px rgba(255, 60, 20, 0.6),
+            0 0 42px rgba(220, 40, 20, 0.4),
+            inset 0 0 14px rgba(255, 100, 0, 0.3);
+          border-color: rgba(255, 90, 20, 1);
+        }
+      }
+      .neon-pulse-box {
+        animation: neonPulse 1.8s ease-in-out infinite;
+      }
+    `;
+    document.head.appendChild(style);
+  }, []);
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
@@ -787,7 +818,7 @@ function UpcomingBox({ matches, myPreds, setPred, onSave, saved }) {
   }
   const isWithin24h = matches.length > 0 && new Date(matches[0].kickoff).getTime() - Date.now() <= 24 * 60 * 60 * 1000;
   return (
-    <div style={s.upcomingBox}>
+    <div style={s.upcomingBox} className="neon-pulse-box">
       <div style={s.upcomingHeader}>
         <span>⚡ {isWithin24h ? "Prochains matchs (24h)" : "À venir"}</span>
         <span style={s.upcomingCount}>{matches.length} match{matches.length > 1 ? "s" : ""}</span>
@@ -1025,7 +1056,7 @@ const s = {
   bonusTitle: { fontFamily: DISPLAY, fontWeight: 800, fontSize: 15, color: INK, marginBottom: 4 },
   bonusText: { fontSize: 12.5, color: "#3A1A08", lineHeight: 1.5, fontWeight: 500 },
   bonusClose: { background: "rgba(0,0,0,.06)", border: "none", borderRadius: 999, width: 26, height: 26, fontSize: 13, fontWeight: 700, color: MUTE, cursor: "pointer", flexShrink: 0 },
-  upcomingBox: { background: `linear-gradient(180deg, #FFFEF5 0%, #FFFAEB 100%)`, border: `1.5px solid ${GOLD}`, borderRadius: 18, padding: "14px 16px", marginBottom: 20, boxShadow: "0 4px 14px rgba(233,185,73,.18)" },
+  upcomingBox: { background: `linear-gradient(180deg, #FFFEF5 0%, #FFFAEB 100%)`, border: `2px solid ${GOLD}`, borderRadius: 18, padding: "14px 16px", marginBottom: 20, boxShadow: "0 4px 14px rgba(233,185,73,.18)", position: "relative" },
   upcomingEmpty: { background: "#FAF5EE", border: `1px solid ${LINE}`, borderRadius: 14, padding: "16px", marginBottom: 20, fontSize: 13, color: MUTE, textAlign: "center", fontWeight: 500 },
   upcomingHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", fontFamily: DISPLAY, fontWeight: 800, fontSize: 14, color: INK, marginBottom: 12, letterSpacing: -0.2 },
   upcomingCount: { fontSize: 10.5, fontWeight: 700, color: "#9A7E2E", background: "rgba(233,185,73,.18)", padding: "3px 9px", borderRadius: 20, letterSpacing: 0.3, textTransform: "uppercase" },
