@@ -34,18 +34,16 @@ const FLAGS = {
 const flag = (t) => FLAGS[t] || "⚽";
 
 // ============================================================================
-// BRACKET — Les 4 matchs des quarts de finale (officiel FIFA, horaires France)
+// BRACKET — Les 2 demi-finales (officiel FIFA, horaires France)
 // ============================================================================
-const BRACKET_QF = [
-  ["QF-1", "France",    "Maroc",      "2026-07-09T22:00", "Boston 🇺🇸"],
-  ["QF-2", "Espagne",   "Belgique",   "2026-07-10T21:00", "Los Angeles 🇺🇸"],
-  ["QF-3", "Norvège",   "Angleterre", "2026-07-11T23:00", "Miami 🇺🇸"],
-  ["QF-4", "Argentine", "Suisse",     "2026-07-12T03:00", "Kansas City 🇺🇸"],
+const BRACKET_SF = [
+  ["SF-1", "France",     "Espagne",   "2026-07-14T21:00", "Dallas 🇺🇸"],
+  ["SF-2", "Angleterre", "Argentine", "2026-07-15T21:00", "Atlanta 🇺🇸"],
 ];
 
 function buildMatches() {
-  return BRACKET_QF.map(([id, home, away, kickoff, venue, resultFixed]) => ({
-    id, round: "quarts", home, away, kickoff, venue,
+  return BRACKET_SF.map(([id, home, away, kickoff, venue, resultFixed]) => ({
+    id, round: "demi", home, away, kickoff, venue,
     resultFixed: resultFixed || null,
   }));
 }
@@ -57,15 +55,16 @@ const FIXED_RESULTS = Object.fromEntries(
 
 // ============================================================================
 // HISTORIQUE — matchs des tours précédents dont on garde les points
-// (poules M1-M72 + seizièmes R16-1 à R16-16 + huitièmes R8-1 à R8-8)
+// (poules M1-M72 + seizièmes R16-1..16 + huitièmes R8-1..8 + quarts QF-1..4)
 // ============================================================================
 const LEGACY_POULES_IDS = Array.from({ length: 72 }, (_, i) => `M${i + 1}`);
 const LEGACY_R16_IDS = Array.from({ length: 16 }, (_, i) => `R16-${i + 1}`);
 const LEGACY_R8_IDS = Array.from({ length: 8 }, (_, i) => `R8-${i + 1}`);
-const LEGACY_MATCH_IDS = [...LEGACY_POULES_IDS, ...LEGACY_R16_IDS, ...LEGACY_R8_IDS];
+const LEGACY_QF_IDS = Array.from({ length: 4 }, (_, i) => `QF-${i + 1}`);
+const LEGACY_MATCH_IDS = [...LEGACY_POULES_IDS, ...LEGACY_R16_IDS, ...LEGACY_R8_IDS, ...LEGACY_QF_IDS];
 
-// Matchs diffusés en clair sur M6 (France systématiquement, plus les grosses affiches)
-const M6_MATCHES = new Set(["QF-1", "QF-2", "QF-3", "QF-4"]);
+// Les 2 demi-finales sont sur M6 + beIN Sports
+const M6_MATCHES = new Set(["SF-1", "SF-2"]);
 function channelsFor(id) {
   return M6_MATCHES.has(id) ? ["M6", "beIN Sports"] : ["beIN Sports"];
 }
@@ -101,9 +100,15 @@ const HISTORIC_MATCHES_R8 = [
   ["R8-7", "Argentine",  "Égypte",     "2026-07-07T18:00"],
   ["R8-8", "Suisse",     "Colombie",   "2026-07-07T22:00"],
 ];
+const HISTORIC_MATCHES_QF = [
+  ["QF-1", "France",    "Maroc",      "2026-07-09T22:00"],
+  ["QF-2", "Espagne",   "Belgique",   "2026-07-10T21:00"],
+  ["QF-3", "Norvège",   "Angleterre", "2026-07-11T23:00"],
+  ["QF-4", "Argentine", "Suisse",     "2026-07-12T03:00"],
+];
 // Table lookup pour retrouver les infos d'un match ancien à partir de son ID
 const HISTORIC_LOOKUP = {};
-[...HISTORIC_MATCHES_R16, ...HISTORIC_MATCHES_R8].forEach(([id, home, away, kickoff]) => {
+[...HISTORIC_MATCHES_R16, ...HISTORIC_MATCHES_R8, ...HISTORIC_MATCHES_QF].forEach(([id, home, away, kickoff]) => {
   HISTORIC_LOOKUP[id] = { id, home, away, kickoff };
 });
 
@@ -121,18 +126,18 @@ function formatKickoff(iso) {
 }
 
 // ============================================================================
-// SCORING — score exact +100 en quart (+10 sinon) / +5 bon vainqueur / +3 bonne différence
+// SCORING — score exact +500 en quart/demi (+10 sinon) / +5 bon vainqueur / +3 bonne différence
 // ============================================================================
-// pred = { h, a, tabWinner? }    actual = { h, a, tabWinner? }    matchId = "QF-1" | "R8-3" | "M42" | ...
-// Barème : score exact = +100 pts pour les quarts / +10 pour les autres tours. Bon vainqueur +5, bonne diff +3.
+// pred = { h, a, tabWinner? }    actual = { h, a, tabWinner? }    matchId = "SF-1" | "QF-1" | "R8-3" | "M42" | ...
+// Barème : score exact = +500 pts pour quarts et demi-finales / +10 pour les autres tours.
 function scorePrediction(pred, actual, matchId) {
   if (!actual || actual.h == null || actual.a == null) return null;
   if (!pred || pred.h == null || pred.a == null) return 0;
   const ph = +pred.h, pa = +pred.a, ah = +actual.h, aa = +actual.a;
   const actualIsDraw = ah === aa;
   const predIsDraw = ph === pa;
-  const isQuarterFinal = typeof matchId === "string" && matchId.startsWith("QF-");
-  const EXACT_PTS = isQuarterFinal ? 100 : 10;
+  const isHighStakes = typeof matchId === "string" && (matchId.startsWith("QF-") || matchId.startsWith("SF-"));
+  const EXACT_PTS = isHighStakes ? 500 : 10;
 
   // Cas spécial : le match réel a fini sur un nul (=> TAB)
   if (actualIsDraw) {
@@ -360,7 +365,7 @@ function Game({ session, profile }) {
     setMyPreds(mine);
   }
 
-  // Set des IDs valides pour les pronos (uniquement les matchs du tour en cours : quarts)
+  // Set des IDs valides pour les pronos (uniquement les matchs du tour en cours : demi-finales)
   const CURRENT_MATCH_IDS = useMemo(() => new Set(MATCHES.map((m) => m.id)), []);
 
   function setPred(matchId, side, val) {
@@ -506,7 +511,7 @@ function Game({ session, profile }) {
           const sc = scorePrediction(userPred, matchRes, mid);
           played++;
           pts += sc;
-          if (sc === 100 || sc === 10) exact++; else if (sc >= 3) good++;
+          if (sc === 500 || sc === 10) exact++; else if (sc >= 3) good++;
         }
       });
       return { uid, pseudo: profiles[uid] || "?", pts, exact, good, played };
@@ -541,7 +546,7 @@ function Game({ session, profile }) {
         </div>
         <div style={s.headerStats}>
           <div style={s.statPill}><b>{myScore}</b> pts</div>
-          <div style={s.statPillGhost}>Quarts de finale</div>
+          <div style={s.statPillGhost}>Demi-finales</div>
         </div>
       </div>
 
@@ -550,7 +555,7 @@ function Game({ session, profile }) {
           <span style={s.decisiveEmoji}>🔥</span>
           <div style={{ flex: 1 }}>
             <div style={s.decisiveTitle}>Ça devient sérieux !</div>
-            <div style={s.decisiveText}>À partir des quarts, un <b>score exact</b> rapporte <b>+100 pts</b>. Bon vainqueur = +5, bonne différence = +3. Chaque prono peut tout changer.</div>
+            <div style={s.decisiveText}>On est en demi-finales ! Un <b>score exact</b> rapporte <b>+500 pts</b>. Bon vainqueur = +5, bonne différence = +3. Plus que 2 matchs à jouer avant la finale.</div>
           </div>
         </div>
       </div>
@@ -598,8 +603,8 @@ function Game({ session, profile }) {
 
       {tab === "matchs" && (
         <>
-          <div style={s.bracketTitle}>🏆 Quarts de finale</div>
-          <p style={s.bracketSub}>4 matchs à élimination directe. Devine le score, et si tu pronostiques un nul, indique aussi qui passe aux tirs au but.</p>
+          <div style={s.bracketTitle}>🏆 Demi-finales</div>
+          <p style={s.bracketSub}>2 matchs à élimination directe. Devine le score, et si tu pronostiques un nul, indique aussi qui passe aux tirs au but.</p>
           {MATCHES.map((m) => {
             const p = myPreds[m.id] || {};
             const res = results[m.id];
@@ -684,7 +689,7 @@ function Game({ session, profile }) {
                 </div>
               ))}
               <p style={s.lbLegend}>
-                <b>Exact</b> = score exact (+100 pts en quart, +10 avant) · <b>Bon</b> = bon vainqueur (+5) ou bonne différence (+3) · <b>+{BONUS_POINTS} pts</b> de bonus inclus pour tous
+                <b>Exact</b> = score exact (+500 pts en quart/demi, +10 avant) · <b>Bon</b> = bon vainqueur (+5) ou bonne différence (+3) · <b>+{BONUS_POINTS} pts</b> de bonus inclus pour tous
               </p>
             </>
           )}
@@ -694,14 +699,14 @@ function Game({ session, profile }) {
       {tab === "regles" && (
         <div style={s.rulesWrap}>
           <p style={s.rulesIntro}>
-            🔥 On est en quarts de finale ! Plus que 4 matchs, la moitié des équipes en lice s'affrontent pour rejoindre le dernier carré. Devine les scores, marque un maximum de points.
+            🔥 On est en demi-finales ! Plus que 2 matchs pour décrocher un ticket pour la finale. Les 4 meilleures équipes du monde s'affrontent — chaque prono peut faire basculer le classement.
           </p>
           <div style={s.rulesSectionTitle}>Comment marquer des points</div>
           <div style={s.ruleCard}>
-            <div style={{ ...s.rulePts, background: GOLD, fontSize: 13 }}>+100</div>
+            <div style={{ ...s.rulePts, background: GOLD, fontSize: 13 }}>+500</div>
             <div>
               <div style={s.ruleName}>Score exact ⚡</div>
-              <div style={s.ruleDesc}>À partir des quarts, un score exact rapporte <b>100 points</b> (au lieu de 10 avant). Tu trouves le score final pile poil, ex : 2–1 et c'est 2–1.</div>
+              <div style={s.ruleDesc}>À partir des quarts (et donc aussi en demi), un score exact rapporte <b>500 points</b> (au lieu de 10 avant). Tu trouves le score final pile poil, ex : 2–1 et c'est 2–1.</div>
             </div>
           </div>
           <div style={s.ruleCard}>
@@ -830,7 +835,7 @@ function UpcomingBox({ matches, myPreds, setPred, onSave, saved }) {
           <div key={m.id} style={s.upcomingRow}>
             <div style={s.upcomingTop}>
               <span style={s.upcomingDate}>{ko ? `${ko.long.slice(0, 3)}. ${ko.long.split(" ").slice(1).join(" ")} · ${ko.time}` : ""}</span>
-              <span style={s.upcomingGroup}>Quarts</span>
+              <span style={s.upcomingGroup}>Demi</span>
             </div>
             <div style={s.upcomingMatch}>
               <span style={s.upcomingTeam}><span style={s.flag}>{flag(m.home)}</span>{m.home}</span>
@@ -893,7 +898,7 @@ function PlayerPronosModal({ uid, pseudo, isMe, allPredictions, results, onClose
     }
   });
 
-  // Calcul des points par tour (poules + 16es + 8es historiques + quarts en cours)
+  // Calcul des points par tour (poules + 16es + 8es + quarts historiques + demi en cours)
   let poulesPts = 0, poulesPlayed = 0;
   LEGACY_POULES_IDS.forEach((mid) => {
     const pred = userPreds[mid];
@@ -921,8 +926,17 @@ function PlayerPronosModal({ uid, pseudo, isMe, allPredictions, results, onClose
       r8Played++;
     }
   });
+  let qfPts_historic = 0, qfPlayed_historic = 0;
+  LEGACY_QF_IDS.forEach((mid) => {
+    const pred = userPreds[mid];
+    const res = results[mid];
+    if (pred && pred.h != null && pred.a != null && res && res.h != null && res.a != null) {
+      qfPts_historic += scorePrediction(pred, res, mid);
+      qfPlayed_historic++;
+    }
+  });
 
-  // Construit une liste unifiée de TOUS les pronos détaillés (16es + 8es + quarts)
+  // Construit une liste unifiée de TOUS les pronos détaillés (16es + 8es + quarts + demi)
   // avec les noms d'équipes, la date et le tour, triés du plus récent au plus ancien.
   function buildDetailedRow(id, home, away, kickoff, round) {
     const pred = userPreds[id];
@@ -934,14 +948,15 @@ function PlayerPronosModal({ uid, pseudo, isMe, allPredictions, results, onClose
     return { id, home, away, kickoff, round, pred, res, pts };
   }
   const rows = [
-    ...MATCHES.map((m) => buildDetailedRow(m.id, m.home, m.away, m.kickoff, "Quarts")),
+    ...MATCHES.map((m) => buildDetailedRow(m.id, m.home, m.away, m.kickoff, "Demi")),
+    ...HISTORIC_MATCHES_QF.map(([id, h, a, k]) => buildDetailedRow(id, h, a, k, "Quarts")),
     ...HISTORIC_MATCHES_R8.map(([id, h, a, k]) => buildDetailedRow(id, h, a, k, "8es")),
     ...HISTORIC_MATCHES_R16.map(([id, h, a, k]) => buildDetailedRow(id, h, a, k, "16es")),
   ]
     .filter((r) => r !== null)
     .sort((a, b) => new Date(b.kickoff).getTime() - new Date(a.kickoff).getTime());
 
-  const qfPts = MATCHES.reduce((sum, m) => {
+  const sfPts = MATCHES.reduce((sum, m) => {
     const pred = userPreds[m.id];
     const res = results[m.id];
     if (pred && pred.h != null && pred.a != null && res && res.h != null && res.a != null) {
@@ -949,14 +964,14 @@ function PlayerPronosModal({ uid, pseudo, isMe, allPredictions, results, onClose
     }
     return sum;
   }, 0);
-  let qfPlayed = 0;
+  let sfPlayed = 0;
   MATCHES.forEach((m) => {
     const pred = userPreds[m.id];
     const res = results[m.id];
-    if (pred && pred.h != null && pred.a != null && res && res.h != null && res.a != null) qfPlayed++;
+    if (pred && pred.h != null && pred.a != null && res && res.h != null && res.a != null) sfPlayed++;
   });
-  const totalPts = poulesPts + r16Pts_historic + r8Pts_historic + qfPts;
-  const totalPlayed = poulesPlayed + r16Played + r8Played + qfPlayed;
+  const totalPts = poulesPts + r16Pts_historic + r8Pts_historic + qfPts_historic + sfPts;
+  const totalPlayed = poulesPlayed + r16Played + r8Played + qfPlayed_historic + sfPlayed;
 
   return (
     <div style={s.modalOverlay} onClick={onClose}>
