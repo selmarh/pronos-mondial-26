@@ -126,18 +126,20 @@ function formatKickoff(iso) {
 }
 
 // ============================================================================
-// SCORING — score exact +500 en quart/demi (+10 sinon) / +5 bon vainqueur / +3 bonne différence
+// SCORING — score exact : +500 en demi, +100 en quart, +10 avant / +5 bon vainqueur / +3 bonne différence
 // ============================================================================
 // pred = { h, a, tabWinner? }    actual = { h, a, tabWinner? }    matchId = "SF-1" | "QF-1" | "R8-3" | "M42" | ...
-// Barème : score exact = +500 pts pour quarts et demi-finales / +10 pour les autres tours.
+// Barème progressif : 500 pts en demi-finale, 100 pts en quart, 10 pts partout ailleurs.
 function scorePrediction(pred, actual, matchId) {
   if (!actual || actual.h == null || actual.a == null) return null;
   if (!pred || pred.h == null || pred.a == null) return 0;
   const ph = +pred.h, pa = +pred.a, ah = +actual.h, aa = +actual.a;
   const actualIsDraw = ah === aa;
   const predIsDraw = ph === pa;
-  const isHighStakes = typeof matchId === "string" && (matchId.startsWith("QF-") || matchId.startsWith("SF-"));
-  const EXACT_PTS = isHighStakes ? 500 : 10;
+  // Barème progressif selon le tour
+  const isSemiFinal = typeof matchId === "string" && matchId.startsWith("SF-");
+  const isQuarterFinal = typeof matchId === "string" && matchId.startsWith("QF-");
+  const EXACT_PTS = isSemiFinal ? 500 : isQuarterFinal ? 100 : 10;
 
   // Cas spécial : le match réel a fini sur un nul (=> TAB)
   if (actualIsDraw) {
@@ -511,7 +513,7 @@ function Game({ session, profile }) {
           const sc = scorePrediction(userPred, matchRes, mid);
           played++;
           pts += sc;
-          if (sc === 500 || sc === 10) exact++; else if (sc >= 3) good++;
+          if (sc === 500 || sc === 100 || sc === 10) exact++; else if (sc >= 3) good++;
         }
       });
       return { uid, pseudo: profiles[uid] || "?", pts, exact, good, played };
@@ -555,7 +557,7 @@ function Game({ session, profile }) {
           <span style={s.decisiveEmoji}>🔥</span>
           <div style={{ flex: 1 }}>
             <div style={s.decisiveTitle}>Ça devient sérieux !</div>
-            <div style={s.decisiveText}>On est en demi-finales ! Un <b>score exact</b> rapporte <b>+500 pts</b>. Bon vainqueur = +5, bonne différence = +3. Plus que 2 matchs à jouer avant la finale.</div>
+            <div style={s.decisiveText}>On est en demi-finales ! Un <b>score exact rapporte désormais +500 pts</b> (les quarts restent à 100 pts). Bon vainqueur = +5, bonne différence = +3. Plus que 2 matchs à jouer avant la finale.</div>
           </div>
         </div>
       </div>
@@ -689,7 +691,7 @@ function Game({ session, profile }) {
                 </div>
               ))}
               <p style={s.lbLegend}>
-                <b>Exact</b> = score exact (+500 pts en quart/demi, +10 avant) · <b>Bon</b> = bon vainqueur (+5) ou bonne différence (+3) · <b>+{BONUS_POINTS} pts</b> de bonus inclus pour tous
+                <b>Exact</b> = score exact (+500 en demi, +100 en quart, +10 avant) · <b>Bon</b> = bon vainqueur (+5) ou bonne différence (+3) · <b>+{BONUS_POINTS} pts</b> de bonus inclus pour tous
               </p>
             </>
           )}
@@ -706,7 +708,7 @@ function Game({ session, profile }) {
             <div style={{ ...s.rulePts, background: GOLD, fontSize: 13 }}>+500</div>
             <div>
               <div style={s.ruleName}>Score exact ⚡</div>
-              <div style={s.ruleDesc}>À partir des quarts (et donc aussi en demi), un score exact rapporte <b>500 points</b> (au lieu de 10 avant). Tu trouves le score final pile poil, ex : 2–1 et c'est 2–1.</div>
+              <div style={s.ruleDesc}>Le barème augmente à chaque tour : <b>500 pts en demi-finales</b>, 100 pts en quarts, 10 pts avant. Tu trouves le score final pile poil, ex : 2–1 et c'est 2–1.</div>
             </div>
           </div>
           <div style={s.ruleCard}>
